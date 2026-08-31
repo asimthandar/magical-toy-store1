@@ -1,0 +1,175 @@
+import { useState } from "react";
+import { useParams, useNavigate } from "react-router";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ShoppingCart, Star } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+export default function ProductPage() {
+  const { productId } = useParams<{ productId: string }>();
+  const navigate = useNavigate();
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+
+  const product = useQuery(
+    api.products.get,
+    productId ? { productId: productId as any } : "skip",
+  );
+  const addItem = useMutation(api.cart.addItem);
+
+  const handleAddToCart = async () => {
+    if (!product) return;
+    if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+      toast.error("Please select a size");
+      return;
+    }
+    try {
+      await addItem({
+        productId: product._id,
+        size: selectedSize || undefined,
+        quantity: 1,
+      });
+      toast.success("Added to cart!");
+      navigate("/dashboard/cart");
+    } catch {
+      toast.error("Failed to add to cart");
+    }
+  };
+
+  if (product === undefined) {
+    return (
+      <div className="pb-24">
+        <div className="animate-pulse">
+          <div className="aspect-square bg-muted" />
+          <div className="p-4 space-y-3">
+            <div className="h-5 w-3/4 rounded bg-muted" />
+            <div className="h-4 w-1/2 rounded bg-muted" />
+            <div className="h-20 rounded bg-muted" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 pb-24">
+        <p className="text-sm text-muted-foreground">Product not found</p>
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          className="mt-2"
+        >
+          Go back
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-24">
+      {/* Back Button */}
+      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm">
+        <div className="flex items-center px-4 py-3">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        </div>
+      </div>
+
+      {/* Product Image */}
+      <div className="aspect-square overflow-hidden bg-muted">
+        <img
+          src={product.image}
+          alt={product.name}
+          className="h-full w-full object-cover"
+        />
+      </div>
+
+      {/* Product Info */}
+      <div className="px-4 pt-4 pb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              {product.name}
+            </h1>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-lg font-bold">₹{product.price}</span>
+              {product.originalPrice && (
+                <span className="text-sm text-muted-foreground line-through">
+                  ₹{product.originalPrice}
+                </span>
+              )}
+              {product.originalPrice && (
+                <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                  {Math.round(
+                    ((product.originalPrice - product.price) /
+                      product.originalPrice) *
+                      100,
+                  )}
+                  % off
+                </span>
+              )}
+            </div>
+          </div>
+          {product.rating && (
+            <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1">
+              <Star className="h-3 w-3 fill-current text-amber-500" />
+              <span className="text-xs font-medium">{product.rating}</span>
+              <span className="text-[10px] text-muted-foreground">
+                ({product.reviewCount})
+              </span>
+            </div>
+          )}
+        </div>
+
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          {product.description}
+        </p>
+
+        <div className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+          {product.category}
+        </div>
+
+        {/* Size Selection */}
+        {product.sizes && product.sizes.length > 0 && (
+          <div className="mt-5">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+              Select Size
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {product.sizes.map((size) => (
+                <button
+                  key={size}
+                  onClick={() => setSelectedSize(size)}
+                  className={cn(
+                    "min-w-[44px] rounded-lg border px-3 py-2 text-xs font-medium transition-all",
+                    selectedSize === size
+                      ? "border-foreground bg-foreground text-white"
+                      : "border-border bg-white text-foreground hover:border-foreground/50",
+                  )}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add to Cart */}
+        <Button
+          onClick={handleAddToCart}
+          className="mt-6 w-full h-12 bg-foreground text-white font-medium"
+        >
+          <ShoppingCart className="mr-2 h-4 w-4" />
+          Add to Cart
+        </Button>
+      </div>
+    </div>
+  );
+}
