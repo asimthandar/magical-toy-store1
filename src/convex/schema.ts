@@ -173,10 +173,13 @@ const schema = defineSchema(
         v.literal("success"),
         v.literal("fallback"),
         v.literal("failed"),
+        v.literal("cooldown"),
       ),
       bestDiscount: v.number(),
       attempts: v.number(),
       maxAttempts: v.number(),
+      cooldownUntil: v.optional(v.number()),
+      circuitBreakerFailures: v.optional(v.number()),
       resultDetails: v.optional(v.any()),
       createdAt: v.number(),
       completedAt: v.optional(v.number()),
@@ -193,6 +196,14 @@ const schema = defineSchema(
       deducted: v.boolean(),
       createdAt: v.number(),
     }).index("by_user", ["userId"]),
+
+    auditLogs: defineTable({
+      userId: v.optional(v.id("users")),
+      event: v.string(),
+      details: v.optional(v.any()),
+      ip: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"])
   },
   {
     schemaValidation: false,

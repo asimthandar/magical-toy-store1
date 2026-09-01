@@ -116,6 +116,7 @@ export const verifyPayment = mutation({
   args: {
     orderId: v.id("orders"),
     success: v.boolean(),
+    idempotencyKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -124,9 +125,32 @@ export const verifyPayment = mutation({
     const order = await ctx.db.get(args.orderId);
     if (!order || order.userId !== userId) throw new Error("Not authorized");
 
+    // Idempotency check: if already paid, don't process again
+    if (order.paymentStatus === "paid" && args.success) {
+      return "already_verified";
+    }
+
+    // If already failed and user retries, allow re-verification
+    if (order.paymentStatus === "failed" && !args.success) {
+      return "already_failed";
+    }
+
     await ctx.db.patch(args.orderId, {
       paymentStatus: args.success ? "paid" : "failed",
       status: args.success ? "processing" : "placed",
+    });
+
+    // Audit log
+    await ctx.db.insert("auditLogs", {
+      userId,
+      event: "payment_verification",
+      details: {
+        orderId: args.orderId,
+        success: args.success,
+        idempotencyKey: args.idempotencyKey,
+        previousStatus: order.paymentStatus,
+      },
+      createdAt: Date.now(),
     });
 
     return args.success ? "verified" : "failed";

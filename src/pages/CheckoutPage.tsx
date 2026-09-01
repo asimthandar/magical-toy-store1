@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,10 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<"address" | "payment" | "qr" | "verifying" | "done" | "failed">("address");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
+  const [idempotencyKey] = useState(() => `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
+  // Price validation - check if cart prices are still valid
+  const priceValidation = useQuery(api.cart.validatePrices);
 
   const activeAddressId = selectedAddressId || defaultAddress?._id;
 
@@ -53,6 +57,12 @@ export default function CheckoutPage() {
     }
     if (!paymentMethod) {
       toast.error("Please select a payment method");
+      return;
+    }
+
+    // Validate prices before placing order
+    if (priceValidation && !priceValidation.valid) {
+      toast.error("Cart prices have changed. Please review your cart.");
       return;
     }
 
@@ -110,7 +120,11 @@ export default function CheckoutPage() {
       await new Promise((r) => setTimeout(r, 1500));
 
       try {
-        const result = await verifyPayment({ orderId: orderId as any, success: true });
+        const result = await verifyPayment({
+        orderId: orderId as any,
+        success: true,
+        idempotencyKey,
+      });
         if (result === "verified") {
           setStep("done");
           toast.success("Payment verified! Order confirmed.");

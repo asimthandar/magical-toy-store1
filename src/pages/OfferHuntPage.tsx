@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,22 @@ export default function OfferHuntPage() {
   const [showFallback, setShowFallback] = useState(false);
   const [fallbackDiscount, setFallbackDiscount] = useState(0);
   const [completedHunt, setCompletedHunt] = useState<any>(null);
+  const [cooldownInfo, setCooldownInfo] = useState<{ inCooldown: boolean; remainingMinutes?: number } | null>(null);
 
   const hunts = useQuery(api.offerHunts.list);
+  const cooldownStatus = useQuery(api.offerHunts.checkCooldown);
   const startHunt = useMutation(api.offerHunts.start);
   const runAttempt = useMutation(api.offerHunts.attempt);
   const runAll = useMutation(api.offerHunts.runAll);
+
+  // Check cooldown on mount
+  useEffect(() => {
+    if (cooldownStatus && cooldownStatus.inCooldown) {
+      setCooldownInfo(cooldownStatus);
+    } else {
+      setCooldownInfo(null);
+    }
+  }, [cooldownStatus]);
 
   const addLog = useCallback((msg: string) => {
     setLiveLog((prev) => [
@@ -156,8 +167,24 @@ export default function OfferHuntPage() {
           </div>
         </div>
 
+        {/* Cooldown Warning */}
+        {cooldownInfo && cooldownInfo.inCooldown && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <p className="text-sm font-medium text-amber-800">
+                System Cooling Down
+              </p>
+            </div>
+            <p className="text-xs text-amber-700">
+              Too many consecutive failures triggered the circuit breaker.
+              Please wait {cooldownInfo.remainingMinutes || "~30"} minutes before trying again.
+            </p>
+          </div>
+        )}
+
         {/* Target Selection */}
-        {!hunting && !showFallback && !completedHunt && (
+        {!hunting && !showFallback && !completedHunt && !cooldownInfo?.inCooldown && (
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
               Select Target Discount

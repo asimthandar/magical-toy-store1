@@ -15,6 +15,7 @@ import {
   Wallet,
   Smartphone,
   Shield,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,8 +45,12 @@ export default function AccountPage() {
   const refreshSession = useMutation(api.sessions.refresh);
   const wallet = useQuery(api.wallet.get);
   const linkedAccounts = useQuery(api.linkedAccounts.list);
+  const canExport = useQuery(api.sessions.canExport);
+  const exportData = useQuery(api.sessions.getExportData);
+  const logExport = useMutation(api.sessions.logExport);
 
   const [timeLeft, setTimeLeft] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     ensureSession();
@@ -68,37 +73,35 @@ export default function AccountPage() {
     }
   }, [refreshSession]);
 
-  const handleExport = useCallback(() => {
-    if (!user) return;
-    const data = {
-      userId: user._id,
-      name: user.name,
-      email: user.email,
-      sessionId: session?._id,
-      createdAt: session?.createdAt,
-      expiresAt: session?.expiresAt,
-      wallet: wallet
-        ? { balance: wallet.balance, totalEarned: wallet.totalEarned }
-        : null,
-      linkedAccounts:
-        linkedAccounts?.map((a) => ({
-          platform: a.platform,
-          phone: a.phone,
-          status: a.status,
-        })) || [],
-      exportedAt: Date.now(),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `session-${user._id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Session exported! ⚠️ Keep this file secure.");
-  }, [user, session, wallet, linkedAccounts]);
+  const handleExport = useCallback(async () => {
+    if (!user || !exportData) return;
+
+    // Check rate limit
+    if (canExport && !canExport.canExport) {
+      toast.error(canExport.reason || "Export limit reached. Try again later.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `session-${user._id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // Log the export
+      await logExport();
+      toast.success("Session exported! ⚠️ Keep this file secure.");
+    } catch (err) {
+      toast.error("Failed to export session");
+    }
+    setIsExporting(false);
+  }, [user, exportData, canExport, logExport]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -185,11 +188,24 @@ export default function AccountPage() {
               variant="outline"
               size="sm"
               className="flex-1"
+              disabled={isExporting || (canExport && !canExport.canExport)}
             >
               <Download className="mr-1 h-3 w-3" />
-              Export JSON
+              {isExporting ? "Exporting..." : "Export JSON"}
             </Button>
           </div>
+
+          {/* Export Rate Limit Warning */}
+          {canExport && !canExport.canExport && (
+            <div className="mt-3 rounded-md bg-amber-50 p-2">
+              <div className="flex items-start gap-1.5">
+                <AlertTriangle className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-[10px] text-amber-700">
+                  {canExport.reason}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Security Warning */}
           <div className="mt-3 rounded-md bg-amber-50 p-2">

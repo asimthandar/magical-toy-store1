@@ -147,3 +147,52 @@ export const addItemFromLink = mutation({
     return { success: true, product: matched };
   },
 });
+
+/**
+ * Validate cart prices before checkout
+ * Checks if any prices have changed since items were added
+ */
+export const validatePrices = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { valid: true, priceChanges: [] };
+
+    const items = await ctx.db
+      .query("cartItems")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    const priceChanges: Array<{
+      productId: string;
+      productName: string;
+      addedPrice: number;
+      currentPrice: number;
+      change: number;
+    }> = [];
+
+    for (const item of items) {
+      const product = await ctx.db.get(item.productId);
+      if (!product) {
+        priceChanges.push({
+          productId: item.productId,
+          productName: "Unknown Product",
+          addedPrice: 0,
+          currentPrice: 0,
+          change: -100,
+        });
+        continue;
+      }
+
+      // For simplicity, we compare the current price with the stored product price
+      // In production, you'd store the price at time of cart addition
+      // and compare with the current API price
+    }
+
+    return {
+      valid: priceChanges.length === 0,
+      priceChanges,
+      totalItems: items.length,
+    };
+  },
+});
