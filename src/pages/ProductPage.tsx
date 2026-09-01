@@ -67,10 +67,19 @@ export default function ProductPage() {
     );
   }
 
+  const hasDiscount =
+    product.originalPrice && product.originalPrice > product.price;
+  const discountPct = hasDiscount
+    ? Math.round(
+        ((product.originalPrice! - product.price) / product.originalPrice!) *
+          100,
+      )
+    : 0;
+
   return (
-    <div className="pb-24">
+    <div className="pb-28 bg-background min-h-screen">
       {/* Back Button */}
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center px-4 py-3">
           <button
             onClick={() => navigate(-1)}
@@ -92,28 +101,25 @@ export default function ProductPage() {
       </div>
 
       {/* Product Info */}
-      <div className="px-4 pt-4 pb-4">
+      <div className="px-4 pt-4">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">
               {product.name}
             </h1>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-lg font-bold">₹{product.price}</span>
-              {product.originalPrice && (
-                <span className="text-sm text-muted-foreground line-through">
-                  ₹{product.originalPrice}
-                </span>
-              )}
-              {product.originalPrice && (
-                <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
-                  {Math.round(
-                    ((product.originalPrice - product.price) /
-                      product.originalPrice) *
-                      100,
-                  )}
-                  % off
-                </span>
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              <span className="text-lg font-bold text-foreground">
+                &#x20B9;{product.price}
+              </span>
+              {hasDiscount && (
+                <>
+                  <span className="text-sm text-muted-foreground line-through">
+                    &#x20B9;{product.originalPrice}
+                  </span>
+                  <span className="rounded-full bg-green-500/10 text-green-500 px-2 py-0.5 text-[10px] font-medium">
+                    {discountPct}% off
+                  </span>
+                </>
               )}
             </div>
           </div>
@@ -139,7 +145,7 @@ export default function ProductPage() {
         {/* Size Selection */}
         {product.sizes && product.sizes.length > 0 && (
           <div className="mt-5">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
               Select Size
             </p>
             <div className="flex flex-wrap gap-2">
@@ -148,10 +154,10 @@ export default function ProductPage() {
                   key={size}
                   onClick={() => setSelectedSize(size)}
                   className={cn(
-                    "min-w-[44px] rounded-lg border px-3 py-2 text-xs font-medium transition-all",
+                    "min-w-[48px] rounded-lg border px-4 py-2.5 text-sm font-medium transition-all",
                     selectedSize === size
-                      ? "border-foreground bg-foreground text-white"
-                      : "border-border bg-white text-foreground hover:border-foreground/50",
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-card text-foreground hover:border-foreground/50",
                   )}
                 >
                   {size}
@@ -160,15 +166,35 @@ export default function ProductPage() {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Add to Cart */}
-        <Button
-          onClick={handleAddToCart}
-          className="mt-6 w-full h-12 bg-foreground text-white font-medium"
-        >
-          <ShoppingCart className="mr-2 h-4 w-4" />
-          Add to Cart
-        </Button>
+      {/* Fixed Bottom Add to Cart Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 bg-background border-t border-border">
+        <div className="px-4 py-3 flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold">&#x20B9;{product.price}</span>
+              {hasDiscount && (
+                <span className="text-xs text-muted-foreground line-through">
+                  &#x20B9;{product.originalPrice}
+                </span>
+              )}
+            </div>
+            {hasDiscount && (
+              <p className="text-[10px] text-green-500 font-medium">
+                You save &#x20B9;{product.originalPrice! - product.price} (
+                {discountPct}% off)
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={handleAddToCart}
+            className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 font-medium"
+          >
+            <ShoppingCart className="mr-2 h-4 w-4" />
+            Add to Cart
+          </Button>
+        </div>
       </div>
     </div>
   );

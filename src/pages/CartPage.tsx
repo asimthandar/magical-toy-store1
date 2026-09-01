@@ -9,7 +9,6 @@ import {
   Trash2,
   MapPin,
   Tag,
-  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,14 +25,24 @@ export default function CartPage() {
       0,
     ) ?? 0;
 
-  const discount = subtotal > 0 ? 120 : 0;
-  const serviceFee = 10;
-  const total = subtotal - discount + serviceFee;
+  const originalSubtotal =
+    cartItems?.reduce(
+      (sum, item) =>
+        sum +
+        (item.product?.originalPrice ?? item.product?.price ?? 0) *
+          item.quantity,
+      0,
+    ) ?? 0;
+
+  const productDiscount = originalSubtotal - subtotal;
+  const firstOrderDiscount = subtotal > 0 ? 120 : 0;
+  const totalDiscount = productDiscount + firstOrderDiscount;
+  const total = subtotal - firstOrderDiscount;
 
   if (cartItems === undefined) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-gray-500">Loading...</div>
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
   }
@@ -41,20 +50,20 @@ export default function CartPage() {
   if (cartItems.length === 0) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="sticky top-0 z-10 bg-[#1a1a1a] border-b border-white/10">
+        <div className="sticky top-0 z-10 bg-background border-b border-border">
           <div className="px-4 py-3">
             <h1 className="text-lg font-bold">My Cart</h1>
           </div>
         </div>
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <ShoppingCart className="h-16 w-16 text-gray-600 mb-4" />
-          <h2 className="text-lg font-semibold text-white">Cart is empty</h2>
-          <p className="text-sm text-gray-400 mt-1">
+          <ShoppingCart className="h-16 w-16 text-muted-foreground/50 mb-4" />
+          <h2 className="text-lg font-semibold">Cart is empty</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Start shopping to add items
           </p>
           <Button
             onClick={() => navigate("/dashboard/search")}
-            className="mt-6 bg-blue-500 hover:bg-blue-600 text-white"
+            className="mt-6 bg-foreground text-background"
           >
             Start Shopping
           </Button>
@@ -66,7 +75,7 @@ export default function CartPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#1a1a1a] border-b border-white/10">
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="px-4 py-3">
           <h1 className="text-lg font-bold">My Cart</h1>
         </div>
@@ -74,17 +83,17 @@ export default function CartPage() {
 
       <div className="px-4 pt-4 space-y-4">
         {/* Address Selection */}
-        <div className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10">
+        <div className="rounded-xl p-4 border border-border bg-card">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
                 <MapPin className="h-4 w-4 text-red-400" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
                   {defaultAddress?.fullName || "No address"}
                 </p>
-                <p className="text-xs text-gray-400 line-clamp-1">
+                <p className="text-xs text-muted-foreground line-clamp-1">
                   {defaultAddress
                     ? `${defaultAddress.houseNumber}, ${defaultAddress.area}, ${defaultAddress.city}`
                     : "Add a delivery address"}
@@ -95,9 +104,9 @@ export default function CartPage() {
               onClick={() => navigate("/dashboard/addresses")}
               variant="outline"
               size="sm"
-              className="border-white/20 text-blue-400 hover:bg-blue-500/10"
+              className="border-border text-foreground shrink-0 ml-2"
             >
-              Change
+              {defaultAddress ? "Change" : "Add"}
             </Button>
           </div>
         </div>
@@ -109,11 +118,11 @@ export default function CartPage() {
               item.product && (
                 <div
                   key={item._id}
-                  className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10"
+                  className="rounded-xl p-4 border border-border bg-card"
                 >
                   <div className="flex gap-3">
                     {/* Product Image */}
-                    <div className="w-20 h-20 rounded-lg bg-[#1a1a1a] overflow-hidden shrink-0">
+                    <div className="w-20 h-20 rounded-lg bg-muted overflow-hidden shrink-0">
                       <img
                         src={item.product.image}
                         alt={item.product.name}
@@ -123,49 +132,47 @@ export default function CartPage() {
 
                     {/* Product Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white line-clamp-2">
+                      <p className="text-sm font-medium line-clamp-2">
                         {item.product.name}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {item.product.category}
-                      </p>
                       {item.size && (
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <span className="inline-block text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded mt-1 text-muted-foreground">
                           Size: {item.size}
-                        </p>
+                        </span>
                       )}
 
                       {/* Price */}
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-sm font-bold text-white">
-                          ₹{item.product.price}
+                        <span className="text-sm font-bold bg-foreground text-background px-2 py-0.5 rounded">
+                          &#x20B9;{item.product.price}
                         </span>
-                        {item.product.originalPrice && (
-                          <>
-                            <span className="text-xs text-gray-500 line-through">
-                              ₹{item.product.originalPrice}
-                            </span>
-                            <span className="text-xs text-green-400">
-                              {Math.round(
-                                ((item.product.originalPrice - item.product.price) /
-                                  item.product.originalPrice) *
-                                  100,
-                              )}
-                              % Off
-                            </span>
-                          </>
-                        )}
+                        {item.product.originalPrice &&
+                          item.product.originalPrice > item.product.price && (
+                            <>
+                              <span className="text-xs text-muted-foreground line-through">
+                                &#x20B9;{item.product.originalPrice}
+                              </span>
+                              <span className="text-xs text-green-500">
+                                {Math.round(
+                                  ((item.product.originalPrice -
+                                    item.product.price) /
+                                    item.product.originalPrice) *
+                                    100,
+                                )}
+                                % Off
+                              </span>
+                            </>
+                          )}
                       </div>
 
-                      {/* Delivery */}
-                      <p className="text-xs text-green-400 mt-1">
-                        🚚 Free Delivery
+                      <p className="text-xs text-green-500 mt-1">
+                        Free Delivery
                       </p>
                     </div>
                   </div>
 
                   {/* Quantity Controls */}
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() =>
@@ -174,11 +181,11 @@ export default function CartPage() {
                             quantity: item.quantity - 1,
                           })
                         }
-                        className="w-8 h-8 rounded-lg bg-[#1a1a1a] flex items-center justify-center hover:bg-[#3a3a3a] transition-colors"
+                        className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
                       >
-                        <Minus className="h-4 w-4 text-white" />
+                        <Minus className="h-4 w-4" />
                       </button>
-                      <span className="w-8 text-center text-sm font-medium text-white">
+                      <span className="w-8 text-center text-sm font-medium">
                         {item.quantity}
                       </span>
                       <button
@@ -188,9 +195,9 @@ export default function CartPage() {
                             quantity: item.quantity + 1,
                           })
                         }
-                        className="w-8 h-8 rounded-lg bg-[#1a1a1a] flex items-center justify-center hover:bg-[#3a3a3a] transition-colors"
+                        className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
                       >
-                        <Plus className="h-4 w-4 text-white" />
+                        <Plus className="h-4 w-4" />
                       </button>
                     </div>
                     <button
@@ -206,18 +213,15 @@ export default function CartPage() {
         </div>
 
         {/* Price Details */}
-        <div className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10">
-          <h3 className="text-sm font-semibold text-white mb-3">
-            Price details
-          </h3>
+        <div className="rounded-xl p-4 border border-border bg-card">
+          <h3 className="text-sm font-semibold mb-3">Price details</h3>
 
-          {/* Discount Banner */}
-          {discount > 0 && (
+          {totalDiscount > 0 && (
             <div className="bg-green-500/10 rounded-lg p-3 mb-3">
               <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4 text-green-400" />
-                <p className="text-sm text-green-400">
-                  Yay! Your total discount is ₹{discount}
+                <Tag className="h-4 w-4 text-green-500" />
+                <p className="text-sm text-green-500 font-medium">
+                  Yay! Your total discount is &#x20B9;{totalDiscount}
                 </p>
               </div>
             </div>
@@ -225,41 +229,32 @@ export default function CartPage() {
 
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Product Price</span>
-              <span className="text-white">₹{subtotal}</span>
+              <span className="text-muted-foreground">Product Price</span>
+              <span>&#x20B9;{originalSubtotal}</span>
             </div>
-            {discount > 0 && (
+            {productDiscount > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Total Discounts</span>
-                <span className="text-green-400">- ₹{discount}</span>
+                <span className="text-muted-foreground">Total Discounts</span>
+                <span className="text-green-500">
+                  - &#x20B9;{productDiscount}
+                </span>
               </div>
             )}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Service Fee</span>
-              <span className="text-white">₹{serviceFee}</span>
-            </div>
-            <div className="border-t border-white/10 pt-2 mt-2">
-              <div className="flex justify-between">
-                <span className="text-sm font-semibold text-white">
-                  Order total
+            {firstOrderDiscount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  1st Order Discount
                 </span>
-                <span className="text-sm font-bold text-white">₹{total}</span>
+                <span className="text-green-500">
+                  - &#x20B9;{firstOrderDiscount}
+                </span>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Service Fee Warning */}
-        <div className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/20">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-amber-400">
-                Add funds to order
-              </p>
-              <p className="text-xs text-amber-400/70 mt-0.5">
-                Order fee ₹{serviceFee} · Wallet balance ₹0. Add ₹{serviceFee} from the bot.
-              </p>
+            )}
+            <div className="border-t border-border pt-2 mt-2">
+              <div className="flex justify-between">
+                <span className="text-sm font-semibold">Order total</span>
+                <span className="text-sm font-bold">&#x20B9;{total}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -267,9 +262,9 @@ export default function CartPage() {
         {/* Checkout Button */}
         <Button
           onClick={() => navigate("/dashboard/checkout")}
-          className="w-full h-12 bg-blue-500 hover:bg-blue-600 text-white font-medium"
+          className="w-full h-12 bg-foreground text-background font-medium"
         >
-          Place Order — ₹{total}
+          Place Order — &#x20B9;{total}
         </Button>
       </div>
     </div>
