@@ -1,6 +1,6 @@
 import { Outlet, Navigate, useLocation } from "react-router";
 import { BottomNav } from "@/components/BottomNav";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useEffect } from "react";
 
@@ -13,9 +13,9 @@ export default function Dashboard() {
     seedProducts();
   }, [seedProducts]);
 
-  // Redirect bare /dashboard to /dashboard/search
+  // Redirect bare /dashboard to /dashboard/home
   if (location.pathname === "/dashboard") {
-    return <Navigate to="/dashboard/search" replace />;
+    return <Navigate to="/dashboard/home" replace />;
   }
 
   return (

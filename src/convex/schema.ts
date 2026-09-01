@@ -125,6 +125,74 @@ const schema = defineSchema(
       createdAt: v.number(),
     }).index("by_code", ["code"])
       .index("by_user", ["userId"]),
+
+    wallet: defineTable({
+      userId: v.id("users"),
+      balance: v.number(),
+      totalEarned: v.number(),
+      totalSpent: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    walletTransactions: defineTable({
+      userId: v.id("users"),
+      type: v.union(
+        v.literal("credit"),
+        v.literal("debit"),
+        v.literal("hold"),
+        v.literal("refund"),
+      ),
+      amount: v.number(),
+      description: v.string(),
+      referenceId: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    linkedAccounts: defineTable({
+      userId: v.id("users"),
+      phone: v.string(),
+      platform: v.string(),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("verified"),
+        v.literal("expired"),
+        v.literal("banned"),
+      ),
+      sessionTokens: v.optional(v.any()),
+      welcomeBonus: v.optional(v.number()),
+      referredByCode: v.optional(v.string()),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"])
+      .index("by_phone", ["phone"]),
+
+    offerHunts: defineTable({
+      userId: v.id("users"),
+      targetDiscount: v.number(),
+      status: v.union(
+        v.literal("hunting"),
+        v.literal("success"),
+        v.literal("fallback"),
+        v.literal("failed"),
+      ),
+      bestDiscount: v.number(),
+      attempts: v.number(),
+      maxAttempts: v.number(),
+      resultDetails: v.optional(v.any()),
+      createdAt: v.number(),
+      completedAt: v.optional(v.number()),
+    }).index("by_user", ["userId"]),
+
+    serviceFees: defineTable({
+      userId: v.id("users"),
+      type: v.union(
+        v.literal("order_processing"),
+        v.literal("offer_hunt"),
+        v.literal("subscription"),
+      ),
+      amount: v.number(),
+      deducted: v.boolean(),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
   },
   {
     schemaValidation: false,

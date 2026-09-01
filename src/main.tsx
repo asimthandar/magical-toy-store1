@@ -13,6 +13,7 @@ import "./index.css";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const DashboardHome = lazy(() => import("./pages/DashboardHome.tsx"));
 const SearchPage = lazy(() => import("./pages/SearchPage.tsx"));
 const ProductPage = lazy(() => import("./pages/ProductPage.tsx"));
 const CartPage = lazy(() => import("./pages/CartPage.tsx"));
@@ -20,6 +21,9 @@ const CheckoutPage = lazy(() => import("./pages/CheckoutPage.tsx"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage.tsx"));
 const AccountPage = lazy(() => import("./pages/AccountPage.tsx"));
 const AddressesPage = lazy(() => import("./pages/AddressesPage.tsx"));
+const OfferHuntPage = lazy(() => import("./pages/OfferHuntPage.tsx"));
+const AddAccountPage = lazy(() => import("./pages/AddAccountPage.tsx"));
+const ReferPage = lazy(() => import("./pages/ReferPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -138,13 +142,17 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               >
+                <Route path="home" element={<DashboardHome />} />
                 <Route path="search" element={<SearchPage />} />
                 <Route path="product/:productId" element={<ProductPage />} />
                 <Route path="cart" element={<CartPage />} />
                 <Route path="checkout" element={<CheckoutPage />} />
                 <Route path="orders" element={<OrdersPage />} />
-                <Route path="account" element={<AccountPage />} />
                 <Route path="addresses" element={<AddressesPage />} />
+                <Route path="refer" element={<ReferPage />} />
+                <Route path="account" element={<AccountPage />} />
+                <Route path="offer-hunt" element={<OfferHuntPage />} />
+                <Route path="add-account" element={<AddAccountPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

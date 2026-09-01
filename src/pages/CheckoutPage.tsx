@@ -10,6 +10,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Clock,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ export default function CheckoutPage() {
   const defaultAddress = useQuery(api.addresses.getDefault);
   const placeOrder = useMutation(api.orders.place);
   const verifyPayment = useMutation(api.orders.verifyPayment);
+  const debitWallet = useMutation(api.wallet.debit);
 
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     null,
@@ -28,8 +30,9 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "online" | null>(
     null,
   );
-  const [step, setStep] = useState<"address" | "payment" | "qr" | "verifying" | "done">("address");
+  const [step, setStep] = useState<"address" | "payment" | "qr" | "verifying" | "done" | "failed">("address");
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
 
   const activeAddressId = selectedAddressId || defaultAddress?._id;
 
@@ -39,8 +42,9 @@ export default function CheckoutPage() {
       0,
     ) ?? 0;
 
+  const SERVICE_FEE = 10;
   const discount = total > 0 && cartItems && cartItems.length > 0 ? 120 : 0;
-  const finalTotal = total - discount;
+  const finalTotal = total - discount + SERVICE_FEE;
 
   const handlePlaceOrder = async () => {
     if (!activeAddressId) {
@@ -53,6 +57,17 @@ export default function CheckoutPage() {
     }
 
     try {
+      // Deduct service fee from wallet
+      try {
+        await debitWallet({
+          amount: SERVICE_FEE,
+          description: "Order processing fee",
+        });
+      } catch {
+        // Wallet might not have enough — continue with order anyway
+        toast.warning("Could not deduct service fee from wallet");
+      }
+
       const id = await placeOrder({
         addressId: activeAddressId as any,
         paymentMethod,
@@ -74,21 +89,41 @@ export default function CheckoutPage() {
   const handleVerifyPayment = async (success: boolean) => {
     if (!orderId) return;
     setStep("verifying");
-    try {
-      // Simulate verification delay
-      await new Promise((r) => setTimeout(r, 2000));
-      await verifyPayment({ orderId: orderId as any, success });
-      if (success) {
-        setStep("done");
-        toast.success("Payment verified! Order placed.");
-      } else {
-        setStep("payment");
-        toast.error("Payment failed. Please try again.");
+    setPollCount(0);
+
+    if (!success) {
+      // User says payment failed — retry
+      try {
+        await verifyPayment({ orderId: orderId as any, success: false });
+      } catch {
+        // ignore
       }
-    } catch {
       setStep("payment");
-      toast.error("Verification failed");
+      toast.error("Payment failed. Please try again.");
+      return;
     }
+
+    // Poll for payment verification
+    const maxPolls = 10;
+    for (let i = 0; i < maxPolls; i++) {
+      setPollCount(i + 1);
+      await new Promise((r) => setTimeout(r, 1500));
+
+      try {
+        const result = await verifyPayment({ orderId: orderId as any, success: true });
+        if (result === "verified") {
+          setStep("done");
+          toast.success("Payment verified! Order confirmed.");
+          return;
+        }
+      } catch {
+        // Continue polling
+      }
+    }
+
+    // Max polls reached — show pending state
+    setStep("failed");
+    toast.error("Payment verification timed out. Please check later.");
   };
 
   if (step === "done") {
@@ -116,6 +151,25 @@ export default function CheckoutPage() {
     );
   }
 
+  if (step === "failed") {
+    return (
+      <div className="flex flex-col items-center justify-center px-4 py-20 pb-24">
+        <Clock className="h-16 w-16 text-amber-500 mb-4" />
+        <h2 className="text-lg font-semibold">Payment Pending</h2>
+        <p className="mt-1 text-sm text-muted-foreground text-center max-w-xs">
+          Your payment is being verified. This may take a few minutes. Check
+          your Orders for updates.
+        </p>
+        <Button
+          onClick={() => navigate("/dashboard/orders")}
+          className="mt-6 bg-foreground text-white"
+        >
+          Check Orders
+        </Button>
+      </div>
+    );
+  }
+
   if (step === "qr") {
     return (
       <div className="flex flex-col items-center px-4 py-8 pb-24">
@@ -131,17 +185,28 @@ export default function CheckoutPage() {
           <p className="text-2xl font-bold mt-2">₹{finalTotal}</p>
         </div>
 
-        {/* QR Code placeholder - in production this would be a real QR code */}
+        {/* QR Code */}
         <div className="w-56 h-56 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center bg-white">
-          <div className="grid grid-cols-5 gap-1 p-4">
-            {Array.from({ length: 25 }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-4 w-4 rounded-sm ${
-                  Math.random() > 0.5 ? "bg-foreground" : "bg-white"
-                }`}
-              />
-            ))}
+          <div className="grid grid-cols-7 gap-px p-4">
+            {Array.from({ length: 49 }).map((_, i) => {
+              // Create a deterministic QR-like pattern
+              const row = Math.floor(i / 7);
+              const col = i % 7;
+              const isCorner =
+                (row < 3 && col < 3) ||
+                (row < 3 && col > 3) ||
+                (row > 3 && col < 3);
+              const isCenter = row === 3 && col === 3;
+              const pattern = (row * 7 + col) % 3 === 0 || isCorner || isCenter;
+              return (
+                <div
+                  key={i}
+                  className={`h-4 w-4 ${
+                    pattern ? "bg-foreground" : "bg-white"
+                  }`}
+                />
+              );
+            })}
           </div>
           <p className="text-[10px] text-muted-foreground mt-2">
             Scan with your UPI app
@@ -158,7 +223,7 @@ export default function CheckoutPage() {
             className="flex-1 bg-green-600 text-white hover:bg-green-700"
           >
             <CheckCircle className="mr-2 h-4 w-4" />
-            Verify Success
+            I've Paid
           </Button>
           <Button
             onClick={() => handleVerifyPayment(false)}
@@ -178,7 +243,10 @@ export default function CheckoutPage() {
       <div className="flex flex-col items-center justify-center px-4 py-20 pb-24">
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground mb-4" />
         <p className="text-sm text-muted-foreground">
-          Verifying payment...
+          Verifying payment... ({pollCount}/10)
+        </p>
+        <p className="text-[10px] text-muted-foreground/60 mt-1">
+          Do not close this page
         </p>
       </div>
     );
@@ -202,12 +270,12 @@ export default function CheckoutPage() {
       {/* Step Indicator */}
       <div className="flex px-4 py-3 gap-2">
         <div
-          className={`flex-1 h-1 rounded-full ${
+          className={`flex-1 h-1 rounded-full transition-colors ${
             step === "address" ? "bg-foreground" : "bg-muted"
           }`}
         />
         <div
-          className={`flex-1 h-1 rounded-full ${
+          className={`flex-1 h-1 rounded-full transition-colors ${
             step === "payment" ? "bg-foreground" : "bg-muted"
           }`}
         />
@@ -328,9 +396,9 @@ export default function CheckoutPage() {
               <div className="flex items-center gap-3">
                 <CreditCard className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium">Pay Online</p>
+                  <p className="text-sm font-medium">Pay Online (UPI)</p>
                   <p className="text-xs text-muted-foreground">
-                    UPI, Cards, Net Banking
+                    Scan QR code to pay
                   </p>
                 </div>
                 {paymentMethod === "online" && (
@@ -362,7 +430,7 @@ export default function CheckoutPage() {
                     </div>
                   ),
               )}
-              <div className="border-t border-border pt-2 mt-2">
+              <div className="border-t border-border pt-2 mt-2 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span>₹{total}</span>
@@ -373,7 +441,11 @@ export default function CheckoutPage() {
                     <span>-₹{discount}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-bold mt-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Service Fee</span>
+                  <span>₹{SERVICE_FEE}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold mt-2 pt-2 border-t border-border">
                   <span>Total</span>
                   <span>₹{finalTotal}</span>
                 </div>

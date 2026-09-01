@@ -8,12 +8,13 @@ import {
   Clock,
   RefreshCw,
   Download,
-  Gift,
-  Copy,
-  Check,
-  MapPin,
+  Target,
+  CreditCard,
   LogOut,
   ChevronRight,
+  Wallet,
+  Smartphone,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,14 +42,10 @@ export default function AccountPage() {
   const session = useQuery(api.sessions.current);
   const ensureSession = useMutation(api.sessions.ensure);
   const refreshSession = useMutation(api.sessions.refresh);
-  const getReferral = useMutation(api.referrals.getOrCreate);
-  const orders = useQuery(api.orders.list);
+  const wallet = useQuery(api.wallet.get);
+  const linkedAccounts = useQuery(api.linkedAccounts.list);
 
-  const [referral, setReferral] = useState<any>(null);
-  const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState("");
-
-  const firstOrderDiscount = orders && orders.length > 0 ? 120 : 0;
 
   useEffect(() => {
     ensureSession();
@@ -80,6 +77,15 @@ export default function AccountPage() {
       sessionId: session?._id,
       createdAt: session?.createdAt,
       expiresAt: session?.expiresAt,
+      wallet: wallet
+        ? { balance: wallet.balance, totalEarned: wallet.totalEarned }
+        : null,
+      linkedAccounts:
+        linkedAccounts?.map((a) => ({
+          platform: a.platform,
+          phone: a.phone,
+          status: a.status,
+        })) || [],
       exportedAt: Date.now(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -91,26 +97,8 @@ export default function AccountPage() {
     a.download = `session-${user._id}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Session exported!");
-  }, [user, session]);
-
-  const handleGetReferral = async () => {
-    try {
-      const ref = await getReferral();
-      setReferral(ref);
-    } catch {
-      toast.error("Failed to get referral code");
-    }
-  };
-
-  const handleCopyLink = () => {
-    if (!referral) return;
-    const link = `${window.location.origin}?ref=${referral.code}`;
-    navigator.clipboard.writeText(link);
-    setCopied(true);
-    toast.success("Link copied!");
-    setTimeout(() => setCopied(false), 2000);
-  };
+    toast.success("Session exported! ⚠️ Keep this file secure.");
+  }, [user, session, wallet, linkedAccounts]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -145,6 +133,21 @@ export default function AccountPage() {
           </div>
         </div>
 
+        {/* Wallet Quick View */}
+        <button
+          onClick={() => navigate("/dashboard/home")}
+          className="w-full rounded-lg bg-foreground text-white p-4 text-left"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 opacity-70" />
+              <span className="text-xs font-medium opacity-70">Balance</span>
+            </div>
+            <ChevronRight className="h-4 w-4 opacity-50" />
+          </div>
+          <p className="text-2xl font-light mt-1">₹{wallet?.balance ?? 0}</p>
+        </button>
+
         {/* Session Active */}
         <div className="rounded-lg border border-border p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -175,7 +178,7 @@ export default function AccountPage() {
               className="flex-1"
             >
               <RefreshCw className="mr-1 h-3 w-3" />
-              Refresh Session
+              Refresh
             </Button>
             <Button
               onClick={handleExport}
@@ -184,88 +187,60 @@ export default function AccountPage() {
               className="flex-1"
             >
               <Download className="mr-1 h-3 w-3" />
-              Export Session
+              Export JSON
             </Button>
           </div>
-        </div>
 
-        {/* 1st Order Discount */}
-        {firstOrderDiscount > 0 && (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🎉</span>
-              <div>
-                <p className="text-sm font-medium text-green-800">
-                  1st Order Discount
-                </p>
-                <p className="text-xs text-green-600">
-                  ₹{firstOrderDiscount} off your first purchase!
-                </p>
-              </div>
+          {/* Security Warning */}
+          <div className="mt-3 rounded-md bg-amber-50 p-2">
+            <div className="flex items-start gap-1.5">
+              <Shield className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-[10px] text-amber-700">
+                The exported JSON contains sensitive auth tokens. Never share it
+                publicly. Store it in an encrypted vault.
+              </p>
             </div>
           </div>
-        )}
-
-        {/* Refer & Earn */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Gift className="h-4 w-4 text-muted-foreground" />
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Refer & Earn
-            </p>
-          </div>
-
-          {!referral ? (
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground mb-3">
-                Share your secret link with friends and both earn rewards!
-              </p>
-              <Button
-                onClick={handleGetReferral}
-                variant="outline"
-                size="sm"
-                className="bg-foreground text-white"
-              >
-                Get My Referral Link
-              </Button>
-            </div>
-          ) : (
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">
-                Share this link with friends:
-              </p>
-              <div className="flex gap-2">
-                <div className="flex-1 rounded-md bg-muted px-3 py-2 text-xs font-mono truncate">
-                  {referral.code}
-                </div>
-                <Button
-                  onClick={handleCopyLink}
-                  variant="outline"
-                  size="sm"
-                >
-                  {copied ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">
-                Reward: ₹{referral.rewardAmount}{" "}
-                {referral.rewardClaimed ? "(Claimed)" : "(Pending)"}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Quick Links */}
         <div className="rounded-lg border border-border divide-y divide-border">
           <button
+            onClick={() => navigate("/dashboard/home")}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-muted-foreground" />
+              <span>Dashboard</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => navigate("/dashboard/add-account")}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Smartphone className="h-4 w-4 text-muted-foreground" />
+              <span>Add Account</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => navigate("/dashboard/offer-hunt")}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <span>Offer Hunt</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
             onClick={() => navigate("/dashboard/addresses")}
             className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <CreditCard className="h-4 w-4 text-muted-foreground" />
               <span>Address Book</span>
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
