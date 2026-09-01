@@ -28,52 +28,6 @@ export default function Landing() {
         </Button>
       </nav>
 
-      {/* Hero */}
-      <section className="px-6 pt-20 pb-16">
-        <div className="max-w-lg mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
-            <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground mb-4">
-              Curated Collection
-            </p>
-            <h1 className="text-4xl font-light tracking-tight leading-tight">
-              Find what
-              <br />
-              <span className="font-semibold">speaks to you.</span>
-            </h1>
-            <p className="mt-4 text-sm leading-relaxed text-muted-foreground max-w-sm">
-              A carefully curated selection of clothing, shoes, and accessories.
-              Minimal design, maximum quality.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-8 flex gap-3"
-          >
-            <Button
-              onClick={() => navigate("/auth")}
-              className="bg-foreground text-white h-12 px-6"
-            >
-              Shop Now
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Button
-              onClick={() => navigate("/auth")}
-              variant="outline"
-              className="h-12 px-6"
-            >
-              Explore
-            </Button>
-          </motion.div>
-        </div>
-      </section>
-
       {/* Features */}
       <section className="px-6 py-16 border-t border-border/50">
         <div className="max-w-lg mx-auto">
