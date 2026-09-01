@@ -20,7 +20,7 @@ export default function AddressesPage() {
   const addresses = useQuery(api.addresses.list);
   const addAddress = useMutation(api.addresses.add);
   const removeAddress = useMutation(api.addresses.remove);
-  const setDefault = useMutation(api.addresses.setDefault);
+  const updateAddress = useMutation(api.addresses.update);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -73,9 +73,21 @@ export default function AddressesPage() {
     }
   };
 
-  const handleSetDefault = async (id: string) => {
+  const handleSetDefault = async (addr: any) => {
     try {
-      await setDefault({ addressId: id as any });
+      await updateAddress({
+        addressId: addr._id,
+        fullName: addr.fullName,
+        phone: addr.phone,
+        pinCode: addr.pinCode,
+        city: addr.city,
+        state: addr.state,
+        houseNumber: addr.houseNumber,
+        area: addr.area,
+        landmark: addr.landmark,
+        label: addr.label,
+        isDefault: true,
+      });
       toast.success("Default address updated");
     } catch {
       toast.error("Failed to update default");
@@ -257,7 +269,7 @@ export default function AddressesPage() {
                 <div className="flex gap-2 mt-3 pt-3 border-t border-white/10">
                   {!addr.isDefault && (
                     <Button
-                      onClick={() => handleSetDefault(addr._id)}
+                      onClick={() => handleSetDefault(addr)}
                       variant="outline"
                       size="sm"
                       className="border-white/20 text-gray-400 hover:text-white"

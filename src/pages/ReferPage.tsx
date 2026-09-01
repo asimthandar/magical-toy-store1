@@ -18,22 +18,22 @@ export default function ReferPage() {
   const { user } = useAuth();
   const wallet = useQuery(api.wallet.get);
   const referrals = useQuery(api.referrals.list);
-  const ensureReferral = useMutation(api.referrals.ensure);
+  const getOrCreateReferral = useMutation(api.referrals.getOrCreate);
 
   const [referralCode, setReferralCode] = useState("");
 
   useEffect(() => {
     if (user) {
-      ensureReferral().then((code) => {
-        if (code) setReferralCode(code as string);
+      getOrCreateReferral().then((result: any) => {
+        if (result?.code) setReferralCode(result.code);
       });
     }
-  }, [user, ensureReferral]);
+  }, [user, getOrCreateReferral]);
 
   const completedReferrals =
-    referrals?.filter((r) => r.rewardClaimed).length ?? 0;
+    referrals?.filter((r: any) => r.rewardClaimed).length ?? 0;
   const pendingReferrals =
-    referrals?.filter((r) => !r.rewardClaimed).length ?? 0;
+    referrals?.filter((r: any) => !r.rewardClaimed).length ?? 0;
 
   const handleCopyLink = useCallback(() => {
     const link = `https://freebuff.com/ref/${referralCode}`;
