@@ -29,8 +29,8 @@ export function BottomNav() {
     cartItems?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white/95 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-lg items-center justify-around py-1.5">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#1a1a1a] backdrop-blur-sm">
+      <div className="mx-auto flex max-w-lg items-center justify-around py-2">
         {navItems.map((item) => {
           const isActive = location.pathname.startsWith(item.path);
           const Icon = item.icon;
@@ -39,21 +39,21 @@ export function BottomNav() {
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2 py-0.5 text-[9px] font-medium tracking-wide transition-colors",
+                "flex flex-col items-center gap-1 px-3 py-1 text-[10px] font-medium transition-colors",
                 isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground/70",
+                  ? "text-white"
+                  : "text-gray-500 hover:text-gray-300",
               )}
             >
               <div className="relative">
                 <Icon
                   className={cn(
-                    "h-4 w-4",
+                    "h-5 w-5",
                     isActive ? "stroke-[2]" : "stroke-[1.5]",
                   )}
                 />
                 {item.label === "Cart" && cartCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-foreground text-[7px] font-bold text-white">
+                  <span className="absolute -right-2 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[8px] font-bold text-white">
                     {cartCount > 9 ? "9+" : cartCount}
                   </span>
                 )}

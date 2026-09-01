@@ -58,3 +58,18 @@ export const claimReward = mutation({
     return "claimed";
   },
 });
+
+// List all referrals for the current user
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    return await ctx.db
+      .query("referrals")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .collect();
+  },
+});

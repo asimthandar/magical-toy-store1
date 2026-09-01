@@ -1,167 +1,217 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Search, Link, ArrowRight, X } from "lucide-react";
 import { useNavigate } from "react-router";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Search, Link, Flame, TrendingUp, Sparkles } from "lucide-react";
+
+const TRENDING_TAGS = [
+  { label: "Trending", icon: "🔥", color: "bg-orange-500/20 text-orange-400" },
+  { label: "Deals", icon: "🏷️", color: "bg-red-500/20 text-red-400" },
+  { label: "New", icon: "✨", color: "bg-purple-500/20 text-purple-400" },
+  { label: "Sarees", icon: "👘", color: "bg-pink-500/20 text-pink-400" },
+];
+
+const RECENT_SEARCHES = [
+  "Shoes", "Watch for men", "Weight machine", "Bottle",
+  "Jeera", "Tiffin", "deals of the day", "trending",
+];
 
 export default function SearchPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [buyLink, setBuyLink] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"search" | "link">("search");
+  const [linkUrl, setLinkUrl] = useState("");
 
-  const products = useQuery(api.products.list, {
-    search: searchQuery || undefined,
-    category: selectedCategory || undefined,
-  });
-
+  const products = useQuery(
+    api.products.list,
+    query ? { search: query } : "skip",
+  );
   const addItemFromLink = useMutation(api.cart.addItemFromLink);
 
+  const handleSearch = (searchQuery: string) => {
+    setQuery(searchQuery);
+  };
+
   const handleFetchLink = async () => {
-    if (!buyLink.trim()) return;
+    if (!linkUrl) return;
     try {
-      const result = await addItemFromLink({ url: buyLink.trim() });
-      toast.success(`${result.product.name} added to cart!`);
-      setBuyLink("");
-    } catch {
-      toast.error("Could not find a product for that link");
+      await addItemFromLink({ url: linkUrl });
+      setLinkUrl("");
+      navigate("/dashboard/cart");
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const categories = ["clothing", "shoes", "accessories"];
-
   return (
-    <div className="pb-24">
-      {/* Search Header */}
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-border">
-        <div className="px-4 pt-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search for shoes, clothing, accessories..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-muted/50 border-0 h-11"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-              >
-                <X className="h-4 w-4 text-muted-foreground" />
-              </button>
-            )}
-          </div>
-
-          {/* Buy Link */}
-          <div className="flex gap-2 mt-3">
-            <div className="relative flex-1">
-              <Link className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Paste a product link..."
-                value={buyLink}
-                onChange={(e) => setBuyLink(e.target.value)}
-                className="pl-9 bg-muted/50 border-0 h-10 text-sm"
-              />
-            </div>
-            <Button
-              onClick={handleFetchLink}
-              disabled={!buyLink.trim()}
-              size="sm"
-              className="h-10 px-4 bg-foreground text-white"
-            >
-              Fetch
-              <ArrowRight className="ml-1 h-3.5 w-3.5" />
-            </Button>
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex gap-2 mt-3 overflow-x-auto no-scrollbar">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                !selectedCategory
-                  ? "bg-foreground text-white"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              All
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() =>
-                  setSelectedCategory(selectedCategory === cat ? null : cat)
-                }
-                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
-                  selectedCategory === cat
-                    ? "bg-foreground text-white"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-[#1a1a1a] border-b border-white/10">
+        <div className="px-4 py-3">
+          <h1 className="text-lg font-bold">Search</h1>
         </div>
       </div>
 
-      {/* Product Grid */}
-      <div className="px-4 pt-4">
-        {products === undefined ? (
-          <div className="grid grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="animate-pulse">
-                <div className="aspect-[3/4] rounded-lg bg-muted" />
-                <div className="mt-2 h-3 w-3/4 rounded bg-muted" />
-                <div className="mt-1 h-3 w-1/2 rounded bg-muted" />
-              </div>
-            ))}
+      <div className="px-4 pt-4 space-y-4">
+        {/* Search/Link Toggle */}
+        <div className="flex gap-2 p-1 bg-[#2a2a2a] rounded-xl">
+          <button
+            onClick={() => setActiveTab("search")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "search"
+                ? "bg-blue-500 text-white"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Search className="h-4 w-4" />
+            Search
+          </button>
+          <button
+            onClick={() => setActiveTab("link")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "link"
+                ? "bg-blue-500 text-white"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Link className="h-4 w-4" />
+            By Link
+          </button>
+        </div>
+
+        {/* Search Input */}
+        {activeTab === "search" && (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Search for products..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-10 bg-[#2a2a2a] border-white/10 text-white placeholder:text-gray-500"
+              />
+            </div>
+            <Button
+              onClick={() => handleSearch(query)}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              Go
+            </Button>
           </div>
-        ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Search className="h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">
-              {searchQuery
-                ? `No results for "${searchQuery}"`
-                : "Start browsing our collection"}
+        )}
+
+        {/* Link Input */}
+        {activeTab === "link" && (
+          <div className="flex gap-2">
+            <Input
+              placeholder="Paste product link..."
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              className="bg-[#2a2a2a] border-white/10 text-white placeholder:text-gray-500"
+            />
+            <Button
+              onClick={handleFetchLink}
+              disabled={!linkUrl}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              Fetch
+            </Button>
+          </div>
+        )}
+
+        {/* Trending Tags */}
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {TRENDING_TAGS.map((tag) => (
+            <button
+              key={tag.label}
+              onClick={() => handleSearch(tag.label)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap ${tag.color}`}
+            >
+              {tag.icon} {tag.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Recent Searches */}
+        {!query && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-white">
+                Recent searches
+              </p>
+              <button className="text-xs text-red-400 hover:text-red-300">
+                🗑️ Clear
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {RECENT_SEARCHES.map((item) => (
+                <button
+                  key={item}
+                  onClick={() => handleSearch(item)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#2a2a2a] text-sm text-gray-300 hover:bg-[#3a3a3a] transition-colors"
+                >
+                  🕐 {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!query && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center mb-4">
+              <span className="text-4xl">🛍️</span>
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">
+              Discover great deals
+            </h2>
+            <p className="text-sm text-gray-400 max-w-xs">
+              Search for anything — sarees, kurtis, watches, home decor and more.
             </p>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {products.map((product) => (
-              <button
-                key={product._id}
-                onClick={() => navigate(`/dashboard/product/${product._id}`)}
-                className="group text-left"
-              >
-                <div className="aspect-[3/4] overflow-hidden rounded-lg bg-muted">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                </div>
-                <div className="mt-2 px-0.5">
-                  <p className="text-xs font-medium leading-tight line-clamp-1 text-foreground">
-                    {product.name}
-                  </p>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <span className="text-xs font-semibold text-foreground">
-                      ₹{product.price}
-                    </span>
-                    {product.originalPrice && (
-                      <span className="text-[10px] text-muted-foreground line-through">
-                        ₹{product.originalPrice}
-                      </span>
-                    )}
+        )}
+
+        {/* Search Results */}
+        {query && products && (
+          <div>
+            <p className="text-sm text-gray-400 mb-3">
+              {products.length} results for "{query}"
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {products.map((product) => (
+                <button
+                  key={product._id}
+                  onClick={() => navigate(`/dashboard/product/${product._id}`)}
+                  className="bg-[#2a2a2a] rounded-xl overflow-hidden text-left hover:bg-[#3a3a3a] transition-colors"
+                >
+                  <div className="aspect-square bg-[#1a1a1a]">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                </div>
-              </button>
-            ))}
+                  <div className="p-3">
+                    <p className="text-sm font-medium text-white line-clamp-2">
+                      {product.name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm font-bold text-white">
+                        ₹{product.price}
+                      </span>
+                      {product.originalPrice && (
+                        <span className="text-xs text-gray-500 line-through">
+                          ₹{product.originalPrice}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

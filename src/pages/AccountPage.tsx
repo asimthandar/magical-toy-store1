@@ -24,7 +24,7 @@ function formatTimeLeft(expiresAt: number) {
   if (diff <= 0) return "Expired";
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}h ${minutes}m`;
+  return `${hours}h ${minutes}m left`;
 }
 
 function formatDateTime(ts: number) {
@@ -76,7 +76,6 @@ export default function AccountPage() {
   const handleExport = useCallback(async () => {
     if (!user || !exportData) return;
 
-    // Check rate limit
     if (canExport && !canExport.canExport) {
       toast.error(canExport.reason || "Export limit reached. Try again later.");
       return;
@@ -94,7 +93,6 @@ export default function AccountPage() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Log the export
       await logExport();
       toast.success("Session exported! ⚠️ Keep this file secure.");
     } catch (err) {
@@ -108,176 +106,163 @@ export default function AccountPage() {
     navigate("/");
   };
 
+  const activeAccount = linkedAccounts?.find((a) => a.status === "verified");
+
   return (
-    <div className="pb-24">
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-border">
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-[#1a1a1a] border-b border-white/10">
         <div className="px-4 py-3">
-          <h1 className="text-base font-semibold">Account</h1>
+          <h1 className="text-lg font-bold">Account</h1>
         </div>
       </div>
 
       <div className="px-4 pt-4 space-y-4">
-        {/* Profile */}
-        <div className="rounded-lg bg-muted/50 p-4">
+        {/* User Card */}
+        <div className="bg-blue-500 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-foreground/10 flex items-center justify-center">
-              <span className="text-sm font-semibold text-foreground">
-                {user?.name?.[0] || user?.email?.[0] || "?"}
+            <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+              <span className="text-lg font-bold text-white">
+                {activeAccount?.phone?.slice(-2) || user?.name?.[0] || "?"}
               </span>
             </div>
-            <div>
-              <p className="text-sm font-medium">
-                {user?.name || "Guest User"}
+            <div className="flex-1">
+              <p className="text-white font-medium">
+                {activeAccount?.phone
+                  ? `+91 ${activeAccount.phone}`
+                  : user?.email || "Guest"}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {user?.email || "No email"}
+              <p className="text-white/70 text-xs">
+                User ID: {user?._id?.slice(-6) || "..."}
               </p>
             </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <span className="text-xs bg-white/20 text-white px-2 py-1 rounded">
+              OTP login
+            </span>
+            <span className="text-xs bg-green-500/30 text-white px-2 py-1 rounded">
+              ✅ Order placed
+            </span>
           </div>
         </div>
 
-        {/* Wallet Quick View */}
-        <button
-          onClick={() => navigate("/dashboard/home")}
-          className="w-full rounded-lg bg-foreground text-white p-4 text-left"
-        >
+        {/* Session Active */}
+        <div className="bg-green-500/10 rounded-xl p-4 border border-green-500/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 opacity-70" />
-              <span className="text-xs font-medium opacity-70">Balance</span>
-            </div>
-            <ChevronRight className="h-4 w-4 opacity-50" />
-          </div>
-          <p className="text-2xl font-light mt-1">₹{wallet?.balance ?? 0}</p>
-        </button>
-
-        {/* Session Active */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Session Active
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-md bg-muted/50 p-2">
-              <p className="text-[10px] text-muted-foreground">Login Time</p>
-              <p className="text-xs font-medium mt-0.5">
-                {session ? formatDateTime(session.createdAt) : "—"}
-              </p>
-            </div>
-            <div className="rounded-md bg-muted/50 p-2">
-              <p className="text-[10px] text-muted-foreground">Time Left</p>
-              <p className="text-xs font-medium mt-0.5">{timeLeft || "—"}</p>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mt-3">
-            <Button
-              onClick={handleRefresh}
-              variant="outline"
-              size="sm"
-              className="flex-1"
-            >
-              <RefreshCw className="mr-1 h-3 w-3" />
-              Refresh
-            </Button>
-            <Button
-              onClick={handleExport}
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              disabled={isExporting || (canExport && !canExport.canExport)}
-            >
-              <Download className="mr-1 h-3 w-3" />
-              {isExporting ? "Exporting..." : "Export JSON"}
-            </Button>
-          </div>
-
-          {/* Export Rate Limit Warning */}
-          {canExport && !canExport.canExport && (
-            <div className="mt-3 rounded-md bg-amber-50 p-2">
-              <div className="flex items-start gap-1.5">
-                <AlertTriangle className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
-                <p className="text-[10px] text-amber-700">
-                  {canExport.reason}
+              <span className="text-lg">🔒</span>
+              <div>
+                <p className="text-sm font-semibold text-green-400">
+                  Session active
+                </p>
+                <p className="text-xs text-green-400/70">
+                  Expires: {session ? formatDateTime(session.expiresAt) : "—"}
                 </p>
               </div>
             </div>
-          )}
-
-          {/* Security Warning */}
-          <div className="mt-3 rounded-md bg-amber-50 p-2">
-            <div className="flex items-start gap-1.5">
-              <Shield className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
-              <p className="text-[10px] text-amber-700">
-                The exported JSON contains sensitive auth tokens. Never share it
-                publicly. Store it in an encrypted vault.
-              </p>
-            </div>
+            <span className="text-sm font-bold text-green-400">
+              {timeLeft || "—"}
+            </span>
           </div>
         </div>
 
-        {/* Quick Links */}
-        <div className="rounded-lg border border-border divide-y divide-border">
-          <button
-            onClick={() => navigate("/dashboard/home")}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+        {/* 1st Order Discount */}
+        <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-xl p-4 border border-amber-500/30">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🎉</span>
+            <p className="text-sm font-semibold text-amber-400">
+              Your 1st order discount
+            </p>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            Upto ₹120 off
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            on 1st order · valid 3 days · bucket 120
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
           >
-            <div className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-muted-foreground" />
-              <span>Dashboard</span>
+            <RefreshCw className="mr-1 h-3 w-3" />
+            Refresh offer
+          </Button>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">💰</span>
+              <p className="text-xs text-gray-400">Wallet balance</p>
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xl font-bold text-white">
+              ₹{wallet?.balance ?? 0}
+            </p>
+          </div>
+          <div className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">🔗</span>
+              <p className="text-xs text-gray-400">Linked accounts</p>
+            </div>
+            <p className="text-xl font-bold text-white">
+              {linkedAccounts?.length ?? 0}
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-2">
+          <button
+            onClick={handleRefresh}
+            className="w-full flex items-center gap-3 p-4 bg-[#2a2a2a] rounded-xl border border-white/10 hover:bg-[#3a3a3a] transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <RefreshCw className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium text-white">Refresh Session</p>
+              <p className="text-xs text-gray-400">
+                Get a new token for 2 more days
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-gray-500" />
           </button>
+
           <button
-            onClick={() => navigate("/dashboard/add-account")}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+            onClick={handleExport}
+            disabled={isExporting || (canExport && !canExport.canExport)}
+            className="w-full flex items-center gap-3 p-4 bg-[#2a2a2a] rounded-xl border border-white/10 hover:bg-[#3a3a3a] transition-colors disabled:opacity-50"
           >
-            <div className="flex items-center gap-2">
-              <Smartphone className="h-4 w-4 text-muted-foreground" />
-              <span>Add Account</span>
+            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
+              <Download className="h-5 w-5 text-red-400" />
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-          <button
-            onClick={() => navigate("/dashboard/offer-hunt")}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <span>Offer Hunt</span>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium text-white">Export Session</p>
+              <p className="text-xs text-gray-400">
+                {isExporting
+                  ? "Exporting..."
+                  : canExport && !canExport.canExport
+                    ? canExport.reason
+                    : "Send this account's session file to your chat"}
+              </p>
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-          <button
-            onClick={() => navigate("/dashboard/addresses")}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
-              <span>Address Book</span>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-          <button
-            onClick={() => navigate("/dashboard/orders")}
-            className="flex w-full items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span>Order History</span>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 text-gray-500" />
           </button>
         </div>
+
+        {/* Footer Note */}
+        <p className="text-xs text-gray-500 text-center py-2">
+          To add or remove accounts, use the bot chat.
+        </p>
 
         {/* Sign Out */}
         <Button
           onClick={handleSignOut}
           variant="outline"
-          className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+          className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10"
         >
           <LogOut className="mr-2 h-4 w-4" />
           Sign Out
