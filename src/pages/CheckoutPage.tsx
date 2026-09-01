@@ -11,6 +11,8 @@ import {
   XCircle,
   Loader2,
   Clock,
+  Truck,
+  Tag,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -22,7 +24,7 @@ export default function CheckoutPage() {
   const defaultAddress = useQuery(api.addresses.getDefault);
   const placeOrder = useMutation(api.orders.place);
   const verifyPayment = useMutation(api.orders.verifyPayment);
-
+  const updateCart = useMutation(api.cart.updateQuantity);
 
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     null,
@@ -30,15 +32,19 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "online" | null>(
     null,
   );
-  const [step, setStep] = useState<"address" | "payment" | "qr" | "verifying" | "done" | "failed">("address");
+  const [step, setStep] = useState<
+    "address" | "payment" | "qr" | "verifying" | "done" | "failed"
+  >("address");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
-  const [idempotencyKey] = useState(() => `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  const [idempotencyKey] = useState(
+    () => `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+  );
 
-  // Price validation - check if cart prices are still valid
   const priceValidation = useQuery(api.cart.validatePrices);
-
-  const activeAddressId = selectedAddressId || defaultAddress?._id;
+  const activeAddress = addresses?.find(
+    (a) => a._id === (selectedAddressId || defaultAddress?._id),
+  );
 
   const total =
     cartItems?.reduce(
@@ -46,11 +52,20 @@ export default function CheckoutPage() {
       0,
     ) ?? 0;
 
-  const discount = total > 0 && cartItems && cartItems.length > 0 ? 120 : 0;
-  const finalTotal = total - discount;
+  const originalTotal =
+    cartItems?.reduce(
+      (sum, item) =>
+        sum + (item.product?.originalPrice ?? item.product?.price ?? 0) * item.quantity,
+      0,
+    ) ?? 0;
+
+  const productDiscount = originalTotal - total;
+  const firstOrderDiscount = total > 0 && cartItems && cartItems.length > 0 ? 120 : 0;
+  const discount = productDiscount + firstOrderDiscount;
+  const finalTotal = total - firstOrderDiscount;
 
   const handlePlaceOrder = async () => {
-    if (!activeAddressId) {
+    if (!activeAddress) {
       toast.error("Please select a delivery address");
       return;
     }
@@ -58,8 +73,6 @@ export default function CheckoutPage() {
       toast.error("Please select a payment method");
       return;
     }
-
-    // Validate prices before placing order
     if (priceValidation && !priceValidation.valid) {
       toast.error("Cart prices have changed. Please review your cart.");
       return;
@@ -67,7 +80,7 @@ export default function CheckoutPage() {
 
     try {
       const id = await placeOrder({
-        addressId: activeAddressId as any,
+        addressId: activeAddress._id as any,
         paymentMethod,
         paymentStatus: paymentMethod === "cash" ? "paid" : "pending",
       });
@@ -90,7 +103,6 @@ export default function CheckoutPage() {
     setPollCount(0);
 
     if (!success) {
-      // User says payment failed — retry
       try {
         await verifyPayment({ orderId: orderId as any, success: false });
       } catch {
@@ -101,7 +113,6 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Poll for payment verification
     const maxPolls = 10;
     for (let i = 0; i < maxPolls; i++) {
       setPollCount(i + 1);
@@ -109,10 +120,10 @@ export default function CheckoutPage() {
 
       try {
         const result = await verifyPayment({
-        orderId: orderId as any,
-        success: true,
-        idempotencyKey,
-      });
+          orderId: orderId as any,
+          success: true,
+          idempotencyKey,
+        });
         if (result === "verified") {
           setStep("done");
           toast.success("Payment verified! Order confirmed.");
@@ -123,10 +134,26 @@ export default function CheckoutPage() {
       }
     }
 
-    // Max polls reached — show pending state
     setStep("failed");
     toast.error("Payment verification timed out. Please check later.");
   };
+
+  const handleUpdateQty = async (cartItemId: string, newQty: number) => {
+    if (newQty < 1) return;
+    try {
+      await updateCart({ cartItemId: cartItemId as any, quantity: newQty });
+    } catch {
+      toast.error("Failed to update quantity");
+    }
+  };
+
+  // Estimated delivery date (7 days from now)
+  const deliveryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const deliveryStr = deliveryDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  });
 
   if (step === "done") {
     return (
@@ -187,11 +214,9 @@ export default function CheckoutPage() {
           <p className="text-2xl font-bold mt-2">₹{finalTotal}</p>
         </div>
 
-        {/* QR Code */}
         <div className="w-56 h-56 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center bg-white">
           <div className="grid grid-cols-7 gap-px p-4">
             {Array.from({ length: 49 }).map((_, i) => {
-              // Create a deterministic QR-like pattern
               const row = Math.floor(i / 7);
               const col = i % 7;
               const isCorner =
@@ -256,16 +281,21 @@ export default function CheckoutPage() {
 
   return (
     <div className="pb-24">
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-border">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="flex items-center px-4 py-3">
           <button
-            onClick={() => (step === "payment" ? setStep("address") : navigate(-1))}
+            onClick={() =>
+              step === "payment" ? setStep("address") : navigate(-1)
+            }
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
             {step === "payment" ? "Back" : "Cart"}
           </button>
-          <h1 className="ml-4 text-base font-semibold">Checkout</h1>
+          <h1 className="ml-4 text-base font-semibold">
+            {step === "address" ? "Select Address" : "My Cart"}
+          </h1>
         </div>
       </div>
 
@@ -300,9 +330,7 @@ export default function CheckoutPage() {
             </div>
           ) : addresses.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-muted-foreground">
-                No saved addresses
-              </p>
+              <p className="text-sm text-muted-foreground">No saved addresses</p>
               <Button
                 onClick={() => navigate("/dashboard/addresses")}
                 variant="outline"
@@ -318,7 +346,7 @@ export default function CheckoutPage() {
                   key={addr._id}
                   onClick={() => setSelectedAddressId(addr._id)}
                   className={`w-full text-left rounded-lg border p-3 transition-all ${
-                    activeAddressId === addr._id
+                    (selectedAddressId || defaultAddress?._id) === addr._id
                       ? "border-foreground bg-foreground/[0.03]"
                       : "border-border hover:border-foreground/30"
                   }`}
@@ -327,7 +355,7 @@ export default function CheckoutPage() {
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                       {addr.label}
                     </span>
-                    {activeAddressId === addr._id && (
+                    {(selectedAddressId || defaultAddress?._id) === addr._id && (
                       <div className="h-2 w-2 rounded-full bg-foreground" />
                     )}
                   </div>
@@ -342,7 +370,7 @@ export default function CheckoutPage() {
 
           <Button
             onClick={() => {
-              if (!activeAddressId) {
+              if (!activeAddress) {
                 toast.error("Please select an address");
                 return;
               }
@@ -356,18 +384,191 @@ export default function CheckoutPage() {
       )}
 
       {step === "payment" && (
-        <div className="px-4">
-          <div className="flex items-center gap-2 mb-4">
-            <CreditCard className="h-4 w-4" />
-            <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Payment Method
-            </h2>
+        <div className="px-4 space-y-4">
+          {/* Address Card */}
+          {activeAddress && (
+            <div className="rounded-xl border border-border p-3 flex items-center justify-between">
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">
+                      {activeAddress.fullName}
+                    </p>
+                    <span className="text-[10px] font-medium uppercase bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                      {activeAddress.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {activeAddress.houseNumber}, {activeAddress.area},{" "}
+                    {activeAddress.city} - {activeAddress.pinCode}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStep("address")}
+                className="text-xs font-medium text-foreground border border-border rounded-lg px-3 py-1.5 shrink-0 ml-2 hover:bg-muted transition-colors"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
+          {/* Cart Items */}
+          <div className="space-y-3">
+            {cartItems?.map(
+              (item) =>
+                item.product && (
+                  <div
+                    key={item._id}
+                    className="rounded-xl border border-border p-3"
+                  >
+                    <div className="flex gap-3">
+                      {/* Product Image */}
+                      <div className="w-20 h-20 rounded-lg bg-muted shrink-0 overflow-hidden">
+                        <img
+                          src={item.product.image}
+                          alt={item.product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+
+                      {/* Product Details */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium line-clamp-2">
+                          {item.product.name}
+                        </p>
+                        {item.size && (
+                          <span className="inline-block text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded mt-1 text-muted-foreground">
+                            Size: {item.size}
+                          </span>
+                        )}
+
+                        {/* Price */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-sm font-bold bg-foreground text-background px-2 py-0.5 rounded">
+                            ₹{item.product.price}
+                          </span>
+                          {item.product.originalPrice &&
+                            item.product.originalPrice > item.product.price && (
+                              <>
+                                <span className="text-xs text-muted-foreground line-through">
+                                  ₹{item.product.originalPrice}
+                                </span>
+                                <span className="text-xs text-green-500 font-medium">
+                                  {Math.round(
+                                    ((item.product.originalPrice -
+                                      item.product.price) /
+                                      item.product.originalPrice) *
+                                      100,
+                                  )}
+                                  % Off
+                                </span>
+                              </>
+                            )}
+                        </div>
+
+                        {/* Savings badge */}
+                        {item.product.originalPrice &&
+                          item.product.originalPrice > item.product.price && (
+                            <div className="flex items-center gap-1 mt-1.5">
+                              <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full font-medium">
+                                ₹
+                                {item.product.originalPrice -
+                                  item.product.price}{" "}
+                                Less today
+                              </span>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+
+                    {/* Delivery + Quantity Row */}
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Truck className="h-3 w-3" />
+                        <span>Est. delivery {deliveryStr}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {item.quantity > 1 ? (
+                          <button
+                            onClick={() =>
+                              handleUpdateQty(item._id, item.quantity - 1)
+                            }
+                            className="w-7 h-7 rounded border border-border flex items-center justify-center text-sm hover:bg-muted transition-colors"
+                          >
+                            −
+                          </button>
+                        ) : null}
+                        <span className="text-sm font-medium w-5 text-center">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() =>
+                            handleUpdateQty(item._id, item.quantity + 1)
+                          }
+                          className="w-7 h-7 rounded border border-border flex items-center justify-center text-sm hover:bg-muted transition-colors"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ),
+            )}
           </div>
 
+          {/* Price Details */}
+          <div className="rounded-xl border border-border p-4">
+            <h3 className="text-sm font-semibold mb-3">Price details</h3>
+
+            {/* Discount Banner */}
+            {discount > 0 && (
+              <div className="flex items-center gap-2 bg-green-500/10 text-green-500 rounded-lg px-3 py-2 mb-3">
+                <Tag className="h-4 w-4 shrink-0" />
+                <span className="text-sm font-medium">
+                  Yay! Your total discount is ₹{discount}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Product Price</span>
+                <span>₹{originalTotal}</span>
+              </div>
+
+              {productDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total Discounts</span>
+                  <span className="text-green-500">− ₹{productDiscount}</span>
+                </div>
+              )}
+
+              {firstOrderDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">1st Order Discount</span>
+                  <span className="text-green-500">− ₹{firstOrderDiscount}</span>
+                </div>
+              )}
+
+              <div className="border-t border-dashed border-border pt-3 mt-3">
+                <div className="flex justify-between text-base font-bold">
+                  <span>Order total</span>
+                  <span>₹{finalTotal}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Method */}
           <div className="space-y-2">
+            <p className="text-sm font-semibold">Select payment method</p>
+
             <button
               onClick={() => setPaymentMethod("cash")}
-              className={`w-full text-left rounded-lg border p-4 transition-all ${
+              className={`w-full text-left rounded-xl border p-4 transition-all ${
                 paymentMethod === "cash"
                   ? "border-foreground bg-foreground/[0.03]"
                   : "border-border hover:border-foreground/30"
@@ -375,21 +576,21 @@ export default function CheckoutPage() {
             >
               <div className="flex items-center gap-3">
                 <Banknote className="h-5 w-5 text-muted-foreground" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium">Cash on Delivery</p>
                   <p className="text-xs text-muted-foreground">
                     Pay when your order arrives
                   </p>
                 </div>
                 {paymentMethod === "cash" && (
-                  <div className="ml-auto h-2 w-2 rounded-full bg-foreground" />
+                  <div className="h-2 w-2 rounded-full bg-foreground" />
                 )}
               </div>
             </button>
 
             <button
               onClick={() => setPaymentMethod("online")}
-              className={`w-full text-left rounded-lg border p-4 transition-all ${
+              className={`w-full text-left rounded-xl border p-4 transition-all ${
                 paymentMethod === "online"
                   ? "border-foreground bg-foreground/[0.03]"
                   : "border-border hover:border-foreground/30"
@@ -397,64 +598,23 @@ export default function CheckoutPage() {
             >
               <div className="flex items-center gap-3">
                 <CreditCard className="h-5 w-5 text-muted-foreground" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium">Pay Online (UPI)</p>
                   <p className="text-xs text-muted-foreground">
                     Scan QR code to pay
                   </p>
                 </div>
                 {paymentMethod === "online" && (
-                  <div className="ml-auto h-2 w-2 rounded-full bg-foreground" />
+                  <div className="h-2 w-2 rounded-full bg-foreground" />
                 )}
               </div>
             </button>
           </div>
 
-          {/* Order Summary */}
-          <div className="mt-6 rounded-lg bg-muted/50 p-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
-              Order Summary
-            </p>
-            <div className="space-y-2">
-              {cartItems?.map(
-                (item) =>
-                  item.product && (
-                    <div
-                      key={item._id}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="text-muted-foreground">
-                        {item.product.name} × {item.quantity}
-                      </span>
-                      <span>
-                        ₹{item.product.price * item.quantity}
-                      </span>
-                    </div>
-                  ),
-              )}
-              <div className="border-t border-border pt-2 mt-2 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>₹{total}</span>
-                </div>
-                {discount > 0 && (
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>1st Order Discount</span>
-                    <span>-₹{discount}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-base font-bold mt-2 pt-2 border-t border-border">
-                  <span>Total</span>
-                  <span>₹{finalTotal}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
+          {/* Place Order Button */}
           <Button
             onClick={handlePlaceOrder}
-            className="mt-6 w-full h-12 bg-foreground text-white font-medium"
+            className="w-full h-12 bg-foreground text-white font-medium"
           >
             Place Order — ₹{finalTotal}
           </Button>
