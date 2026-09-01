@@ -3,15 +3,9 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useNavigate } from "react-router";
-import { Button } from "@/components/ui/button";
 import {
-  Wallet,
-  Plus,
   ShoppingBag,
   Target,
-  CreditCard,
-  ChevronRight,
-  Zap,
   Smartphone,
   Gift,
 } from "lucide-react";
@@ -189,19 +183,7 @@ export default function DashboardHome() {
           </button>
         )}
 
-        {/* Service Fee Notice */}
-        <div className="bg-[#2a2a2a] rounded-xl p-4 border border-white/10">
-          <div className="flex items-start gap-3">
-            <CreditCard className="h-5 w-5 text-gray-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-medium text-gray-400">Service Fee</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">
-                A small fee is deducted from your wallet for order processing and
-                offer hunting.
-              </p>
-            </div>
-          </div>
-        </div>
+
       </div>
     </div>
   );

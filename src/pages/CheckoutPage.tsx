@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ export default function CheckoutPage() {
   const defaultAddress = useQuery(api.addresses.getDefault);
   const placeOrder = useMutation(api.orders.place);
   const verifyPayment = useMutation(api.orders.verifyPayment);
-  const debitWallet = useMutation(api.wallet.debit);
+
 
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     null,
@@ -46,9 +46,8 @@ export default function CheckoutPage() {
       0,
     ) ?? 0;
 
-  const SERVICE_FEE = 10;
   const discount = total > 0 && cartItems && cartItems.length > 0 ? 120 : 0;
-  const finalTotal = total - discount + SERVICE_FEE;
+  const finalTotal = total - discount;
 
   const handlePlaceOrder = async () => {
     if (!activeAddressId) {
@@ -67,17 +66,6 @@ export default function CheckoutPage() {
     }
 
     try {
-      // Deduct service fee from wallet
-      try {
-        await debitWallet({
-          amount: SERVICE_FEE,
-          description: "Order processing fee",
-        });
-      } catch {
-        // Wallet might not have enough — continue with order anyway
-        toast.warning("Could not deduct service fee from wallet");
-      }
-
       const id = await placeOrder({
         addressId: activeAddressId as any,
         paymentMethod,
@@ -455,10 +443,7 @@ export default function CheckoutPage() {
                     <span>-₹{discount}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Service Fee</span>
-                  <span>₹{SERVICE_FEE}</span>
-                </div>
+
                 <div className="flex justify-between text-base font-bold mt-2 pt-2 border-t border-border">
                   <span>Total</span>
                   <span>₹{finalTotal}</span>
