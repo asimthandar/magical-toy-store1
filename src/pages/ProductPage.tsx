@@ -77,7 +77,7 @@ export default function ProductPage() {
     : 0;
 
   return (
-    <div className="pb-28 bg-background min-h-screen">
+    <div className="bg-background min-h-screen">
       {/* Back Button */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center px-4 py-3">
@@ -168,33 +168,31 @@ export default function ProductPage() {
         )}
       </div>
 
-      {/* Fixed Bottom Add to Cart Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 bg-background border-t border-border">
-        <div className="px-4 py-3 flex items-center gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold">&#x20B9;{product.price}</span>
-              {hasDiscount && (
-                <span className="text-xs text-muted-foreground line-through">
-                  &#x20B9;{product.originalPrice}
-                </span>
-              )}
-            </div>
+      {/* Add to Cart Bar — sticky above BottomNav (z-50) */}
+      <div className="sticky bottom-0 z-[60] bg-background border-t border-border px-4 py-3 flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-lg font-bold">&#x20B9;{product.price}</span>
             {hasDiscount && (
-              <p className="text-[10px] text-green-500 font-medium">
-                You save &#x20B9;{product.originalPrice! - product.price} (
-                {discountPct}% off)
-              </p>
+              <span className="text-xs text-muted-foreground line-through">
+                &#x20B9;{product.originalPrice}
+              </span>
             )}
           </div>
-          <Button
-            onClick={handleAddToCart}
-            className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 font-medium"
-          >
-            <ShoppingCart className="mr-2 h-4 w-4" />
-            Add to Cart
-          </Button>
+          {hasDiscount && (
+            <p className="text-[10px] text-green-500 font-medium">
+              You save &#x20B9;{product.originalPrice! - product.price} (
+              {discountPct}% off)
+            </p>
+          )}
         </div>
+        <Button
+          onClick={handleAddToCart}
+          className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 font-medium shrink-0"
+        >
+          <ShoppingCart className="mr-2 h-4 w-4" />
+          Add to Cart
+        </Button>
       </div>
     </div>
   );
