@@ -8,12 +8,10 @@ export default function Dashboard() {
   const location = useLocation();
   const seedProducts = useMutation(api.products.seed);
 
-  // Seed products on first load
   useEffect(() => {
     seedProducts();
   }, [seedProducts]);
 
-  // Redirect bare /dashboard to /dashboard/home
   if (location.pathname === "/dashboard") {
     return <Navigate to="/dashboard/home" replace />;
   }

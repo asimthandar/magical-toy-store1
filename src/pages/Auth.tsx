@@ -26,7 +26,11 @@ function resolveRedirectAfterAuth(
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const {
+    isLoading: authLoading,
+    isAuthenticated,
+    signIn,
+  } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
@@ -44,7 +48,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   }, [authLoading, isAuthenticated, navigate, redirect]);
 
-  const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleEmailSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -53,18 +59,19 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       await signIn("email-otp", formData);
       setStep({ email: formData.get("email") as string });
       setIsLoading(false);
-    } catch (error) {
-      console.error("Email sign-in error:", error);
+    } catch (err) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to send verification code. Please try again.",
+        err instanceof Error
+          ? err.message
+          : "Failed to send verification code.",
       );
       setIsLoading(false);
     }
   };
 
-  const handleOtpSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleOtpSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -72,8 +79,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       const formData = new FormData(event.currentTarget);
       await signIn("email-otp", formData);
       navigate(redirect);
-    } catch (error) {
-      console.error("OTP verification error:", error);
+    } catch {
       setError("The verification code you entered is incorrect.");
       setIsLoading(false);
       setOtp("");
@@ -86,47 +92,53 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     try {
       await signIn("anonymous");
       navigate(redirect);
-    } catch (error) {
-      console.error("Guest login error:", error);
-      setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to sign in as guest.",
+      );
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Ambient glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-blue-500/5 blur-[120px] pointer-events-none" />
+
       {/* Logo */}
-      <div className="mb-6">
-        <img
-          src={logo}
-          alt="Logo"
-          width={56}
-          height={56}
-          className="rounded-xl"
-        />
+      <div className="mb-8 animate-fade-in">
+        <div className="w-14 h-14 rounded-2xl bg-foreground flex items-center justify-center shadow-lg shadow-foreground/10">
+          <img
+            src={logo}
+            alt="Logo"
+            width={36}
+            height={36}
+            className="brightness-0"
+          />
+        </div>
       </div>
 
       {/* Card */}
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-fade-in" style={{ animationDelay: "100ms" }}>
         {step === "signIn" ? (
-          <div className="space-y-5">
-            {/* Title */}
+          <div className="space-y-6">
             <div className="text-center">
-              <h1 className="text-xl font-semibold">Get Started</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold tracking-tight">
+                Get Started
+              </h1>
+              <p className="text-sm text-muted-foreground mt-2">
                 Enter your email to log in or sign up
               </p>
             </div>
 
-            {/* Email Input */}
             <form onSubmit={handleEmailSubmit} className="space-y-3">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <div className="relative group">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-foreground transition-colors" />
                 <Input
                   name="email"
                   placeholder="name@example.com"
                   type="email"
-                  className="pl-10 pr-12 h-12 bg-card border-border"
+                  className="pl-11 pr-12 h-12 bg-card border-border/50 focus:border-foreground/30 focus:ring-1 focus:ring-foreground/10 transition-all"
                   disabled={isLoading}
                   required
                 />
@@ -134,7 +146,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   type="submit"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 rounded-lg"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -146,27 +158,27 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 text-center">{error}</p>
+                <p className="text-sm text-red-400 text-center animate-fade-in">
+                  {error}
+                </p>
               )}
             </form>
 
-            {/* Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
+                <span className="w-full border-t border-border/50" />
               </div>
               <div className="relative flex justify-center">
-                <span className="bg-background px-3 text-xs text-muted-foreground">
-                  OR
+                <span className="bg-background px-4 text-[11px] text-muted-foreground uppercase tracking-widest">
+                  or
                 </span>
               </div>
             </div>
 
-            {/* Guest Button */}
             <Button
               type="button"
               variant="outline"
-              className="w-full h-12 border-border bg-card hover:bg-accent"
+              className="w-full h-12 border-border/50 bg-card hover:bg-muted/50 hover:border-border transition-all"
               onClick={handleGuestLogin}
               disabled={isLoading}
             >
@@ -175,17 +187,20 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             </Button>
           </div>
         ) : (
-          <div className="space-y-5">
-            {/* Title */}
+          <div className="space-y-6">
             <div className="text-center">
-              <h1 className="text-xl font-semibold">Check your email</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                We've sent a code to {step.email}
+              <h1 className="text-2xl font-bold tracking-tight">
+                Check your email
+              </h1>
+              <p className="text-sm text-muted-foreground mt-2">
+                We&apos;ve sent a code to{" "}
+                <span className="text-foreground font-medium">
+                  {step.email}
+                </span>
               </p>
             </div>
 
-            {/* OTP Input */}
-            <form onSubmit={handleOtpSubmit} className="space-y-4">
+            <form onSubmit={handleOtpSubmit} className="space-y-5">
               <input type="hidden" name="email" value={step.email} />
               <input type="hidden" name="code" value={otp} />
 
@@ -196,11 +211,15 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   maxLength={6}
                   disabled={isLoading}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && otp.length === 6 && !isLoading) {
-                      const form = (e.target as HTMLElement).closest("form");
-                      if (form) {
-                        form.requestSubmit();
-                      }
+                    if (
+                      e.key === "Enter" &&
+                      otp.length === 6 &&
+                      !isLoading
+                    ) {
+                      const form = (
+                        e.target as HTMLElement
+                      ).closest("form");
+                      if (form) form.requestSubmit();
                     }
                   }}
                 >
@@ -213,12 +232,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 text-center">{error}</p>
+                <p className="text-sm text-red-400 text-center animate-fade-in">
+                  {error}
+                </p>
               )}
 
               <Button
                 type="submit"
-                className="w-full h-12 bg-white text-black hover:bg-white/90"
+                className="w-full h-12 bg-foreground text-background hover:bg-foreground/90 font-medium transition-all"
                 disabled={isLoading || otp.length !== 6}
               >
                 {isLoading ? (
@@ -235,27 +256,26 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               </Button>
 
               <p className="text-sm text-muted-foreground text-center">
-                Didn't receive a code?{" "}
-                <Button
-                  variant="link"
-                  className="p-0 h-auto"
+                Didn&apos;t receive a code?{" "}
+                <button
+                  type="button"
+                  className="text-foreground font-medium hover:underline underline-offset-4"
                   onClick={() => setStep("signIn")}
                 >
                   Try again
-                </Button>
+                </button>
               </p>
             </form>
           </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-8 py-3 text-xs text-center text-muted-foreground bg-card rounded-xl border border-border">
+        <div className="mt-10 py-3 text-[11px] text-center text-muted-foreground/60">
           Secured by{" "}
           <a
             href="https://freebuff.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors"
           >
             freebuff.com
           </a>
