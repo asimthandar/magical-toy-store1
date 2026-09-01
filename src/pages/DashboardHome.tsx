@@ -8,10 +8,8 @@ import {
   Target,
   Smartphone,
   Gift,
-} from "lucide-react";
-
-export default function DashboardHome() {
-  const { user } = useAuth();
+} from "lucide-react";export default function DashboardHome() {
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const ensureWallet = useMutation(api.wallet.ensure);
   const wallet = useQuery(api.wallet.get);
@@ -19,8 +17,8 @@ export default function DashboardHome() {
   const offerHunts = useQuery(api.offerHunts.list);
 
   useEffect(() => {
-    ensureWallet();
-  }, [ensureWallet]);
+    if (isAuthenticated) ensureWallet();
+  }, [ensureWallet, isAuthenticated]);
 
   const activeAccount = linkedAccounts?.find((a) => a.status === "verified");
   const recentHunt = offerHunts?.[0];
