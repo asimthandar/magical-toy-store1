@@ -1,353 +1,599 @@
-import { action } from "./_generated/server";
-import { v } from "convex/values";
-
 /**
  * E-Commerce API Abstraction Layer
- * 
- * In production, these would make real HTTP calls to the target e-commerce platform.
- * For v1, they simulate API responses with realistic behavior.
- * 
- * Architecture note: This is the "API Abstraction Layer" from the blueprint.
- * All external e-commerce calls should go through this module.
+ *
+ * All external e-commerce calls go through this module.
+ * Uses the apiClient for HTTP calls with auth, retries, and error handling.
+ *
+ * Setup:
+ * 1. Set ECOMMERCE_API_BASE_URL in Convex Environment Variables
+ * 2. Set ECOMMERCE_API_KEY if your API requires it
+ * 3. Fill in any endpoint paths in src/lib/apiConfig.ts that differ from defaults
  */
 
-// User-Agent pool for device rotation (50+ variations)
-const USER_AGENT_POOL = [
-  "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Linux; Android 13; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36",
-  "Mozilla/5.0 (Linux; Android 12; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.100 Mobile Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Linux; Android 14; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.210 Mobile Safari/537.36",
-  "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.134 Mobile Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Linux; Android 12; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.60 Mobile Safari/537.36",
-  "Mozilla/5.0 (Linux; Android 13; SM-M536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.80 Mobile Safari/537.36",
-];
+import { action } from "./_generated/server";
+import { v } from "convex/values";
+import { apiClient, resolvePath, ApiError } from "../lib/apiClient";
+import {
+  ENDPOINTS,
+  type SendOtpResponse,
+  type VerifyOtpResponse,
+  type ProductSearchResponse,
+  type CartResponse,
+  type CreateOrderResponse,
+  type VerifyPaymentResponse,
+  type PriceValidationResponse,
+  type WelcomeTier,
+  type SessionExportData,
+  type CreateQrResponse,
+} from "../lib/apiConfig";
 
-// Device ID pool (MD5-based hashing in production)
-const DEVICE_ID_POOL = [
-  "dev_a1b2c3d4e5f6",
-  "dev_f6e5d4c3b2a1",
-  "dev_1a2b3c4d5e6f",
-  "dev_6f5e4d3c2b1a",
-  "dev_a1b2c3d4e5f7",
-  "dev_f6e5d4c3b2a2",
-  "dev_1a2b3c4d5e6g",
-  "dev_6f5e4d3c2b1b",
-  "dev_a1b2c3d4e5f8",
-  "dev_f6e5d4c3b2a3",
-];
-
-// Proxy pool (in production: Bright Data / Oxylabs rotating residential proxies)
-const PROXY_POOL = [
-  { ip: "103.152.112.0", country: "IN", type: "residential" },
-  { ip: "45.249.67.0", country: "IN", type: "datacenter" },
-  { ip: "103.216.82.0", country: "IN", type: "residential" },
-  { ip: "115.238.90.0", country: "IN", type: "mobile" },
-  { ip: "202.142.81.0", country: "IN", type: "residential" },
-];
-
-// Circuit breaker state (in-memory for v1, Redis in production)
-let consecutiveFailures = 0;
-let circuitOpenUntil = 0;
-const MAX_FAILURES = 10;
-const COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
-
-/**
- * Check if circuit breaker is open (too many consecutive failures)
- */
-function isCircuitOpen(): boolean {
-  if (Date.now() < circuitOpenUntil) return true;
-  if (consecutiveFailures >= MAX_FAILURES) {
-    circuitOpenUntil = Date.now() + COOLDOWN_MS;
-    return true;
-  }
-  return false;
+// ──────────────────────────────────────────────
+// Helper: get session token from linked account
+// ──────────────────────────────────────────────
+function getTokenFromSession(sessionTokens: Record<string, unknown>): string {
+  return (sessionTokens?.accessToken as string) || "";
 }
 
-/**
- * Generate a random device fingerprint for API calls
- */
-function getDeviceFingerprint(attemptNumber: number) {
-  return {
-    userAgent: USER_AGENT_POOL[attemptNumber % USER_AGENT_POOL.length],
-    deviceId: DEVICE_ID_POOL[attemptNumber % DEVICE_ID_POOL.length],
-    proxy: PROXY_POOL[attemptNumber % PROXY_POOL.length],
-    screenWidth: [1080, 1440, 720, 1170, 1179][attemptNumber % 5],
-    screenHeight: [2400, 3200, 1600, 2532, 2556][attemptNumber % 5],
-  };
-}
+// ══════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════
 
-/**
- * Simulate a delay to avoid pattern detection (2-5 seconds random)
- */
-function simulateNetworkDelay(): Promise<void> {
-  const delay = 2000 + Math.random() * 3000;
-  return new Promise((resolve) => setTimeout(resolve, Math.min(delay, 1000))); // Capped at 1s for v1
-}
-
-/**
- * Send OTP via e-commerce platform API
- * In production: POST /api/auth/send-otp with phone, device_id, user_agent
- */
+/** Send OTP to phone number */
 export const sendOtp = action({
   args: {
     phone: v.string(),
-    attemptNumber: v.optional(v.number()),
+    deviceId: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    if (isCircuitOpen()) {
-      throw new Error("System is cooling down due to multiple failures. Please try again in 30 minutes.");
-    }
-
-    const attempt = args.attemptNumber ?? 0;
-    const fingerprint = getDeviceFingerprint(attempt);
-
-    console.log(`[ECommerce API] Sending OTP to ${args.phone}`);
-    console.log(`[ECommerce API] Device: ${fingerprint.deviceId}`);
-    console.log(`[ECommerce API] User-Agent: ${fingerprint.userAgent}`);
-    console.log(`[ECommerce API] Proxy: ${fingerprint.proxy.ip} (${fingerprint.proxy.country})`);
-
-    // Simulate API call delay
-    await simulateNetworkDelay();
-
-    // In production, this would be:
-    // const response = await fetch('https://ecommerce.com/api/auth/send-otp', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'User-Agent': fingerprint.userAgent,
-    //     'X-Device-ID': fingerprint.deviceId,
-    //   },
-    //   body: JSON.stringify({ phone: args.phone }),
-    // });
-
-    // Simulate success (in production, handle 429/403 for rate limiting)
-    return {
-      success: true,
-      message: `OTP sent to ${args.phone}`,
-      deviceId: fingerprint.deviceId,
-      proxy: fingerprint.proxy.ip,
-    };
+    const { data } = await apiClient.post<SendOtpResponse>(
+      ENDPOINTS.auth.sendOtp,
+      {
+        phone: args.phone,
+        deviceId: args.deviceId,
+      },
+    );
+    return data;
   },
 });
 
-/**
- * Verify OTP via e-commerce platform API
- * In production: POST /api/auth/verify-otp with phone, otp, device_id
- */
+/** Verify OTP and get session tokens */
 export const verifyOtp = action({
   args: {
     phone: v.string(),
     otp: v.string(),
-    attemptNumber: v.optional(v.number()),
+    sessionId: v.optional(v.string()),
+    deviceId: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    if (isCircuitOpen()) {
-      throw new Error("System is cooling down. Please try again later.");
-    }
-
-    const attempt = args.attemptNumber ?? 0;
-    const fingerprint = getDeviceFingerprint(attempt);
-
-    console.log(`[ECommerce API] Verifying OTP for ${args.phone}`);
-    console.log(`[ECommerce API] Device: ${fingerprint.deviceId}`);
-
-    await simulateNetworkDelay();
-
-    // In production: POST /api/auth/verify-otp
-    // Returns: { accessToken, refreshToken, userId, expiresIn }
-
-    // Simulate token generation
-    const tokens = {
-      accessToken: `acc_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      refreshToken: `ref_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      userId: `platform_${args.phone}`,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      issuedAt: Date.now(),
-      deviceId: fingerprint.deviceId,
-    };
-
-    consecutiveFailures = 0; // Reset on success
-
-    return {
-      success: true,
-      tokens,
-      message: "OTP verified successfully",
-    };
+    const { data } = await apiClient.post<VerifyOtpResponse>(
+      ENDPOINTS.auth.verifyOtp,
+      {
+        phone: args.phone,
+        otp: args.otp,
+        sessionId: args.sessionId,
+        deviceId: args.deviceId,
+      },
+    );
+    return data;
   },
 });
 
-/**
- * Search products via e-commerce platform API
- * In production: GET /api/products/search?query=...&limit=...&offset=...
- */
+// ══════════════════════════════════════════════
+// PRODUCTS
+// ══════════════════════════════════════════════
+
+/** Search products */
 export const searchProducts = action({
   args: {
     query: v.string(),
+    category: v.optional(v.string()),
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
+    sortBy: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    console.log(`[ECommerce API] Searching products: "${args.query}"`);
-
-    // In production, this would call the actual e-commerce search API
-    // For v1, return the query for the frontend to handle via Convex queries
-    return {
-      query: args.query,
-      limit: args.limit ?? 20,
-      offset: args.offset ?? 0,
-      message: "Search query processed",
-    };
+    const { data } = await apiClient.get<ProductSearchResponse>(
+      ENDPOINTS.products.search,
+      {
+        query: {
+          q: args.query,
+          category: args.category,
+          limit: args.limit ?? 20,
+          offset: args.offset ?? 0,
+          sort: args.sortBy,
+        },
+      },
+    );
+    return data;
   },
 });
 
-/**
- * Fetch product details via e-commerce platform API
- * In production: GET /api/products/{id}
- */
+/** Fetch single product by ID */
 export const fetchProduct = action({
   args: {
     productId: v.string(),
-    attemptNumber: v.optional(v.number()),
   },
   handler: async (_ctx, args) => {
-    console.log(`[ECommerce API] Fetching product: ${args.productId}`);
-
-    const attempt = args.attemptNumber ?? 0;
-    const fingerprint = getDeviceFingerprint(attempt);
-
-    await simulateNetworkDelay();
-
-    // In production: GET /api/products/{id} with auth headers
-    return {
-      productId: args.productId,
-      fetched: true,
-      device: fingerprint.deviceId,
-    };
+    const path = resolvePath(ENDPOINTS.products.getById, {
+      id: args.productId,
+    });
+    const { data } = await apiClient.get(path);
+    return data;
   },
 });
 
-/**
- * Create order via e-commerce platform API
- * In production: POST /api/orders/create with session_id, items, address_id
- */
+/** Fetch product by URL (for buy-link) */
+export const fetchProductByUrl = action({
+  args: {
+    url: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get(ENDPOINTS.products.getByUrl, {
+      query: { url: args.url },
+    });
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// CART
+// ══════════════════════════════════════════════
+
+/** Get cart contents */
+export const getCart = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get<CartResponse>(ENDPOINTS.cart.get, {
+      token: args.token,
+    });
+    return data;
+  },
+});
+
+/** Add item to cart */
+export const addToCart = action({
+  args: {
+    token: v.string(),
+    productId: v.string(),
+    quantity: v.number(),
+    size: v.optional(v.string()),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post<CartResponse>(
+      ENDPOINTS.cart.addItem,
+      {
+        productId: args.productId,
+        quantity: args.quantity,
+        size: args.size,
+      },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Update cart item quantity */
+export const updateCartItem = action({
+  args: {
+    token: v.string(),
+    itemId: v.string(),
+    quantity: v.number(),
+  },
+  handler: async (_ctx, args) => {
+    const path = resolvePath(ENDPOINTS.cart.updateItem, {
+      itemId: args.itemId,
+    });
+    const { data } = await apiClient.put<CartResponse>(
+      path,
+      { quantity: args.quantity },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Remove item from cart */
+export const removeFromCart = action({
+  args: {
+    token: v.string(),
+    itemId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const path = resolvePath(ENDPOINTS.cart.removeItem, {
+      itemId: args.itemId,
+    });
+    const { data } = await apiClient.del<CartResponse>(path, {
+      token: args.token,
+    });
+    return data;
+  },
+});
+
+/** Validate cart prices against current API prices */
+export const validateCartPrices = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post<PriceValidationResponse>(
+      ENDPOINTS.cart.validatePrices,
+      {},
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// ORDERS
+// ══════════════════════════════════════════════
+
+/** Place a new order */
 export const createOrder = action({
   args: {
-    sessionId: v.string(),
-    items: v.array(v.object({
-      productId: v.string(),
-      quantity: v.number(),
-      size: v.optional(v.string()),
-    })),
+    token: v.string(),
+    sessionToken: v.string(),
+    items: v.array(
+      v.object({
+        productId: v.string(),
+        quantity: v.number(),
+        size: v.optional(v.string()),
+      }),
+    ),
     addressId: v.string(),
     paymentMethod: v.string(),
+    idempotencyKey: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    console.log(`[ECommerce API] Creating order with ${args.items.length} items`);
-    console.log(`[ECommerce API] Session: ${args.sessionId}`);
-    console.log(`[ECommerce API] Address: ${args.addressId}`);
-
-    await simulateNetworkDelay();
-
-    // In production: POST /api/orders/create
-    // Returns: { orderId, orderNumber, status, estimatedDelivery }
-
-    const orderNumber = `ORD${Date.now().toString().slice(-8)}`;
-
-    return {
-      success: true,
-      orderNumber,
-      status: "confirmed",
-      estimatedDelivery: "3-5 business days",
-      message: "Order placed successfully",
-    };
+    const { data } = await apiClient.post<CreateOrderResponse>(
+      ENDPOINTS.orders.create,
+      {
+        items: args.items,
+        addressId: args.addressId,
+        paymentMethod: args.paymentMethod,
+        idempotencyKey: args.idempotencyKey,
+      },
+      {
+        token: args.token,
+        headers: {
+          "X-Session-Token": args.sessionToken,
+        },
+      },
+    );
+    return data;
   },
 });
 
-/**
- * Verify payment via e-commerce platform API
- * In production: GET /api/payments/{orderId}/status
- * Uses exponential backoff for retries
- */
-export const verifyPaymentStatus = action({
+/** Get order details */
+export const getOrder = action({
+  args: {
+    token: v.string(),
+    orderId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const path = resolvePath(ENDPOINTS.orders.getById, {
+      id: args.orderId,
+    });
+    const { data } = await apiClient.get(path, { token: args.token });
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// PAYMENTS
+// ══════════════════════════════════════════════
+
+/** Generate UPI QR code for payment */
+export const createPaymentQr = action({
+  args: {
+    orderId: v.string(),
+    amount: v.number(),
+    upiId: v.optional(v.string()),
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post<CreateQrResponse>(
+      ENDPOINTS.payments.createQr,
+      {
+        orderId: args.orderId,
+        amount: args.amount,
+        upiId: args.upiId,
+      },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Verify payment status with exponential backoff */
+export const verifyPayment = action({
   args: {
     orderId: v.string(),
     transactionId: v.optional(v.string()),
     attemptNumber: v.optional(v.number()),
+    token: v.string(),
   },
   handler: async (_ctx, args) => {
-    console.log(`[ECommerce API] Verifying payment for order: ${args.orderId}`);
-
-    const attempt = args.attemptNumber ?? 0;
-
-    // Exponential backoff: 1s, 2s, 4s, 8s...
-    const backoffMs = Math.min(1000 * Math.pow(2, attempt), 15000);
-    await new Promise((r) => setTimeout(r, Math.min(backoffMs, 500))); // Capped for v1
-
-    // In production: GET /api/payments/{orderId}/status
-    // Returns: { status: 'pending' | 'completed' | 'failed', transactionId }
-
-    // Simulate: 70% success after 3+ attempts
-    const successProbability = Math.min(0.3 + attempt * 0.15, 0.85);
-    const isSuccess = Math.random() < successProbability;
-
-    if (isSuccess) {
-      consecutiveFailures = 0;
-      return {
-        status: "completed" as const,
-        transactionId: args.transactionId || `txn_${Date.now()}`,
-        message: "Payment verified successfully",
-      };
-    }
-
-    if (attempt >= 5) {
-      // After 5 attempts, assume pending
-      return {
-        status: "pending" as const,
+    const path = resolvePath(ENDPOINTS.payments.verify, {
+      orderId: args.orderId,
+    });
+    const { data } = await apiClient.post<VerifyPaymentResponse>(
+      path,
+      {
         transactionId: args.transactionId,
-        message: "Payment is still being processed. Please check again later.",
-      };
-    }
-
-    return {
-      status: "pending" as const,
-      transactionId: args.transactionId,
-      message: "Payment verification in progress",
-    };
+        attemptNumber: args.attemptNumber ?? 0,
+      },
+      { token: args.token },
+    );
+    return data;
   },
 });
 
-/**
- * Fetch available welcome bonus tiers
- * In production: GET /api/offers/welcome-bonus with device fingerprint
- */
-export const fetchWelcomeTiers = action({
+/** Poll payment status */
+export const getPaymentStatus = action({
   args: {
-    attemptNumber: v.optional(v.number()),
+    orderId: v.string(),
+    token: v.string(),
   },
   handler: async (_ctx, args) => {
-    if (isCircuitOpen()) {
-      throw new Error("System is cooling down. Please try again later.");
-    }
+    const path = resolvePath(ENDPOINTS.payments.status, {
+      orderId: args.orderId,
+    });
+    const { data } = await apiClient.get(path, { token: args.token });
+    return data;
+  },
+});
 
-    const attempt = args.attemptNumber ?? 0;
-    const fingerprint = getDeviceFingerprint(attempt);
+// ══════════════════════════════════════════════
+// ADDRESSES
+// ══════════════════════════════════════════════
 
-    console.log(`[ECommerce API] Fetching welcome tiers`);
-    console.log(`[ECommerce API] Device: ${fingerprint.deviceId}`);
-    console.log(`[ECommerce API] Proxy: ${fingerprint.proxy.ip}`);
+/** Fetch all addresses */
+export const getAddresses = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get(ENDPOINTS.addresses.list, {
+      token: args.token,
+    });
+    return data;
+  },
+});
 
-    await simulateNetworkDelay();
+/** Add a new address */
+export const addAddress = action({
+  args: {
+    token: v.string(),
+    address: v.object({
+      name: v.string(),
+      phone: v.string(),
+      pincode: v.string(),
+      city: v.string(),
+      state: v.string(),
+      houseNumber: v.string(),
+      area: v.string(),
+      landmark: v.optional(v.string()),
+      label: v.union(
+        v.literal("home"),
+        v.literal("work"),
+        v.literal("other"),
+      ),
+    }),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.addresses.add,
+      args.address,
+      { token: args.token },
+    );
+    return data;
+  },
+});
 
-    // In production: GET /api/offers/welcome-bonus
-    // The tiers available depend on the device fingerprint and proxy
+// ══════════════════════════════════════════════
+// SESSIONS
+// ══════════════════════════════════════════════
 
-    return {
-      tiers: [110, 120, 135, 150, 180],
-      deviceUsed: fingerprint.deviceId,
-      proxyUsed: fingerprint.proxy.ip,
-    };
+/** Refresh platform session */
+export const refreshSession = action({
+  args: {
+    token: v.string(),
+    accountId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.sessions.refresh,
+      { accountId: args.accountId },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Export session data as JSON */
+export const exportSessionData = action({
+  args: {
+    token: v.string(),
+    accountId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const path = resolvePath(ENDPOINTS.accounts.exportSession, {
+      id: args.accountId,
+    });
+    const { data } = await apiClient.get<SessionExportData>(path, {
+      token: args.token,
+    });
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// REFERRALS
+// ══════════════════════════════════════════════
+
+/** Generate referral code and link */
+export const generateReferral = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.referrals.generate,
+      {},
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Get referral stats */
+export const getReferralStats = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get(ENDPOINTS.referrals.getStats, {
+      token: args.token,
+    });
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// OFFER HUNTING
+// ══════════════════════════════════════════════
+
+/** Fetch available welcome bonus tiers */
+export const fetchWelcomeTiers = action({
+  args: {
+    token: v.optional(v.string()),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get<WelcomeTier[]>(
+      ENDPOINTS.offers.welcomeTiers,
+      {
+        token: args.token,
+        query: { timestamp: Date.now() },
+      },
+    );
+    return data;
+  },
+});
+
+/** Run offer hunt for a specific discount target */
+export const huntOffer = action({
+  args: {
+    token: v.string(),
+    targetDiscount: v.number(),
+    maxAttempts: v.optional(v.number()),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.offers.hunt,
+      {
+        targetDiscount: args.targetDiscount,
+        maxAttempts: args.maxAttempts ?? 15,
+      },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// WALLET
+// ══════════════════════════════════════════════
+
+/** Get wallet balance */
+export const getWallet = action({
+  args: {
+    token: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get(ENDPOINTS.wallet.get, {
+      token: args.token,
+    });
+    return data;
+  },
+});
+
+/** Get wallet transactions */
+export const getWalletTransactions = action({
+  args: {
+    token: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.get(ENDPOINTS.wallet.transactions, {
+      token: args.token,
+      query: { limit: args.limit ?? 20 },
+    });
+    return data;
+  },
+});
+
+// ══════════════════════════════════════════════
+// LINKED ACCOUNTS
+// ══════════════════════════════════════════════
+
+/** Initiate account linking */
+export const linkAccount = action({
+  args: {
+    token: v.string(),
+    phone: v.string(),
+    platform: v.string(),
+    referralCode: v.optional(v.string()),
+    welcomeBonus: v.number(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.accounts.link,
+      {
+        phone: args.phone,
+        platform: args.platform,
+        referralCode: args.referralCode,
+        welcomeBonus: args.welcomeBonus,
+      },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Verify OTP for linked account */
+export const verifyLinkedAccount = action({
+  args: {
+    token: v.string(),
+    accountId: v.string(),
+    otp: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const { data } = await apiClient.post(
+      ENDPOINTS.accounts.verify,
+      {
+        accountId: args.accountId,
+        otp: args.otp,
+      },
+      { token: args.token },
+    );
+    return data;
+  },
+});
+
+/** Unlink an account */
+export const unlinkAccount = action({
+  args: {
+    token: v.string(),
+    accountId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const path = resolvePath(ENDPOINTS.accounts.unlink, {
+      id: args.accountId,
+    });
+    const { data } = await apiClient.del(path, { token: args.token });
+    return data;
   },
 });
