@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Link, Flame, TrendingUp, Sparkles } from "lucide-react";
+import { Search, Link, Loader2 } from "lucide-react";
+import { productsApi } from "@/lib/api";
+import type { Product } from "@/lib/apiConfig";
 
 const TRENDING_TAGS = [
   { label: "Trending", icon: "🔥", color: "bg-orange-500/20 text-orange-400" },
@@ -23,26 +23,34 @@ export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"search" | "link">("search");
   const [linkUrl, setLinkUrl] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  const products = useQuery(
-    api.products.list,
-    query ? { search: query } : "skip",
-  );
-  const addItemFromLink = useMutation(api.cart.addItemFromLink);
-
-  const handleSearch = (searchQuery: string) => {
-    setQuery(searchQuery);
-  };
+  const handleSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) return;
+    setLoading(true);
+    setSearched(true);
+    try {
+      const res = await productsApi.getFeed({
+        type: "search",
+        session_state: searchQuery,
+        limit: 20,
+      }) as any;
+      setProducts(res?.products || []);
+    } catch (err) {
+      console.error("Search failed:", err);
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const handleFetchLink = async () => {
     if (!linkUrl) return;
-    try {
-      await addItemFromLink({ url: linkUrl });
-      setLinkUrl("");
-      navigate("/dashboard/cart");
-    } catch (err) {
-      console.error(err);
-    }
+    // TODO: implement buy-link fetch via API
+    setLinkUrl("");
+    navigate("/dashboard/cart");
   };
 
   return (
@@ -90,14 +98,16 @@ export default function SearchPage() {
                 placeholder="Search for products..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch(query)}
                 className="pl-10 bg-[#2a2a2a] border-white/10 text-white placeholder:text-gray-500"
               />
             </div>
             <Button
               onClick={() => handleSearch(query)}
+              disabled={loading}
               className="bg-blue-500 hover:bg-blue-600 text-white"
             >
-              Go
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Go"}
             </Button>
           </div>
         )}
@@ -149,7 +159,10 @@ export default function SearchPage() {
               {RECENT_SEARCHES.map((item) => (
                 <button
                   key={item}
-                  onClick={() => handleSearch(item)}
+                  onClick={() => {
+                    setQuery(item);
+                    handleSearch(item);
+                  }}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#2a2a2a] text-sm text-gray-300 hover:bg-[#3a3a3a] transition-colors"
                 >
                   🕐 {item}
@@ -160,7 +173,7 @@ export default function SearchPage() {
         )}
 
         {/* Empty State */}
-        {!query && (
+        {!query && !searched && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center mb-4">
               <span className="text-4xl">🛍️</span>
@@ -174,8 +187,21 @@ export default function SearchPage() {
           </div>
         )}
 
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
+          </div>
+        )}
+
         {/* Search Results */}
-        {query && products && (
+        {!loading && searched && products.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-gray-400">No results found</p>
+          </div>
+        )}
+
+        {!loading && products.length > 0 && (
           <div>
             <p className="text-sm text-gray-400 mb-3">
               {products.length} results for "{query}"
@@ -183,13 +209,13 @@ export default function SearchPage() {
             <div className="grid grid-cols-2 gap-3">
               {products.map((product) => (
                 <button
-                  key={product._id}
-                  onClick={() => navigate(`/dashboard/product/${product._id}`)}
+                  key={product.id}
+                  onClick={() => navigate(`/dashboard/product/${product.id}`)}
                   className="bg-[#2a2a2a] rounded-xl overflow-hidden text-left hover:bg-[#3a3a3a] transition-colors"
                 >
                   <div className="aspect-square bg-[#1a1a1a]">
                     <img
-                      src={product.image}
+                      src={product.image || product.thumbnail}
                       alt={product.name}
                       className="w-full h-full object-cover"
                     />
@@ -202,9 +228,9 @@ export default function SearchPage() {
                       <span className="text-sm font-bold text-white">
                         ₹{product.price}
                       </span>
-                      {product.originalPrice && (
+                      {product.original_price && (
                         <span className="text-xs text-gray-500 line-through">
-                          ₹{product.originalPrice}
+                          ₹{product.original_price}
                         </span>
                       )}
                     </div>

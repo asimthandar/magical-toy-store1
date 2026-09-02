@@ -21,6 +21,7 @@ import {
   RETRY_DELAY_MS,
   resolvePath,
 } from "./apiConfig";
+import { getAccessToken } from "./auth";
 
 // ──────────────────────────────────────────────
 // Types
@@ -29,8 +30,10 @@ import {
 export interface ApiRequestOptions {
   /** Override the base URL for this request */
   baseUrl?: string;
-  /** Bearer token – automatically attached if provided */
+  /** Bearer token – auto-attached from auth store if not provided */
   token?: string;
+  /** Skip auto auth header */
+  noAuth?: boolean;
   /** Extra headers merged into the request */
   headers?: Record<string, string>;
   /** Query parameters (appended to URL as ?key=value) */
@@ -106,6 +109,7 @@ async function request<T = unknown>(
   const {
     baseUrl = API_BASE_URL,
     token,
+    noAuth = false,
     headers: extraHeaders = {},
     query,
     timeout = API_TIMEOUT_MS,
@@ -114,6 +118,9 @@ async function request<T = unknown>(
     raw = false,
   } = options;
 
+  // Auto-attach token from auth store if not explicitly provided
+  const authToken = token || getAccessToken();
+
   const url = buildUrl(baseUrl, path, query);
 
   const headers: Record<string, string> = {
@@ -121,8 +128,8 @@ async function request<T = unknown>(
   };
 
   // Auth
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (!noAuth && authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
   // API key (server-to-server)

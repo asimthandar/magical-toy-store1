@@ -1,7 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useAuth } from "@/hooks/use-auth";
 import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,16 +6,21 @@ import {
   Download,
   ChevronRight,
   LogIn,
-  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  isAuthenticated,
+  getAuth,
+  refreshSession as refreshSessionStorage,
+  getSessionTimeLeft,
+  exportSession,
+} from "@/lib/auth";
 
-function formatCountdown(expiresAt: number) {
-  const diff = expiresAt - Date.now();
-  if (diff <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+function formatCountdown(timeLeft: number) {
+  if (timeLeft <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
+  const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
   return { expired: false, hours, minutes, seconds };
 }
 
@@ -32,13 +34,13 @@ function formatDateTime(ts: number) {
   });
 }
 
-function CountdownTimer({ expiresAt }: { expiresAt: number }) {
-  const [cd, setCd] = useState(() => formatCountdown(expiresAt));
+function CountdownTimer() {
+  const [cd, setCd] = useState(() => formatCountdown(getSessionTimeLeft()));
 
   useEffect(() => {
-    const id = setInterval(() => setCd(formatCountdown(expiresAt)), 1000);
+    const id = setInterval(() => setCd(formatCountdown(getSessionTimeLeft())), 1000);
     return () => clearInterval(id);
-  }, [expiresAt]);
+  }, []);
 
   if (cd.expired) {
     return (
@@ -73,76 +75,46 @@ function TimeUnit({ value, label }: { value: number; label: string }) {
 }
 
 export default function AccountPage() {
-  const { isLoading, isAuthenticated, user, signOut } = useAuth();
   const navigate = useNavigate();
-  const session = useQuery(api.sessions.current);
-  const ensureSession = useMutation(api.sessions.ensure);
-  const refreshSession = useMutation(api.sessions.refresh);
-  const wallet = useQuery(api.wallet.get);
-  const linkedAccounts = useQuery(api.linkedAccounts.list);
-  const canExport = useQuery(api.sessions.canExport);
-  const exportData = useQuery(api.sessions.getExportData);
-  const logExport = useMutation(api.sessions.logExport);
-
+  const [auth, setAuth] = useState(getAuth());
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) ensureSession();
-  }, [ensureSession, isAuthenticated]);
+    setAuth(getAuth());
+  }, []);
 
-  const handleRefresh = useCallback(async () => {
-    try {
-      await refreshSession();
-      toast.success("Session refreshed for 2 more days!");
-    } catch {
-      toast.error("Failed to refresh session");
-    }
-  }, [refreshSession]);
+  const handleRefresh = useCallback(() => {
+    refreshSessionStorage();
+    setAuth(getAuth());
+    toast.success("Session refreshed for 2 more days!");
+  }, []);
 
-  const handleExport = useCallback(async () => {
-    if (!user || !exportData) return;
-
-    if (canExport && !canExport.canExport) {
-      toast.error(canExport.reason || "Export limit reached. Try again later.");
-      return;
-    }
-
+  const handleExport = useCallback(() => {
     setIsExporting(true);
     try {
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: "application/json",
-      });
+      const data = exportSession();
+      const blob = new Blob([data], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `session-${user._id}.json`;
+      a.download = `session-${auth?.phone_number || "user"}.json`;
       a.click();
       URL.revokeObjectURL(url);
-
-      await logExport();
       toast.success("Session exported! Keep this file secure.");
     } catch {
       toast.error("Failed to export session");
     }
     setIsExporting(false);
-  }, [user, exportData, canExport, logExport]);
+  }, [auth]);
 
-  const handleSignOut = async () => {
-    await signOut();
+  const handleSignOut = () => {
+    localStorage.removeItem("shop_auth");
+    localStorage.removeItem("shop_session");
     navigate("/");
   };
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   // Not authenticated — show login prompt
-  if (!isAuthenticated || !user) {
+  if (!isAuthenticated()) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-6">
@@ -153,16 +125,14 @@ export default function AccountPage() {
           Sign in to view your session, wallet, orders, and account settings.
         </p>
         <Button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/auth")}
           className="mt-6 bg-foreground text-background"
         >
-          Go to Home
+          Go to Login
         </Button>
       </div>
     );
   }
-
-  const activeAccount = linkedAccounts?.find((a) => a.status === "verified");
 
   return (
     <div className="min-h-screen bg-background">
@@ -179,17 +149,15 @@ export default function AccountPage() {
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
               <span className="text-lg font-bold text-white">
-                {activeAccount?.phone?.slice(-2) || user.name?.[0] || "?"}
+                {auth?.phone_number?.slice(-2) || "?"}
               </span>
             </div>
             <div className="flex-1">
               <p className="text-white font-medium">
-                {activeAccount?.phone
-                  ? `+91 ${activeAccount.phone}`
-                  : user.email || "Guest"}
+                +91 {auth?.phone_number || "Unknown"}
               </p>
               <p className="text-white/70 text-xs">
-                User ID: {user._id?.slice(-6) || "..."}
+                User ID: {auth?.user_id || "..."}
               </p>
             </div>
           </div>
@@ -198,7 +166,7 @@ export default function AccountPage() {
               OTP login
             </span>
             <span className="text-xs bg-green-500/30 text-white px-2 py-1 rounded">
-              Order placed
+              Active session
             </span>
           </div>
         </div>
@@ -207,62 +175,50 @@ export default function AccountPage() {
         <div className="bg-green-500/10 rounded-xl p-4 border border-green-500/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="text-base">&#x1F512;</span>
+              <span className="text-base">🔒</span>
               <div>
                 <p className="text-sm font-semibold text-green-400">
                   Session active
                 </p>
                 <p className="text-[10px] text-green-400/70">
                   Expires:{" "}
-                  {session ? formatDateTime(session.expiresAt) : "--"}
+                  {auth ? formatDateTime(auth.expiresAt) : "--"}
                 </p>
               </div>
             </div>
           </div>
-          {session && <CountdownTimer expiresAt={session.expiresAt} />}
+          <CountdownTimer />
         </div>
 
         {/* 1st Order Discount */}
         <div className="bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-amber-500/5 rounded-xl p-4 border border-amber-500/20">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-base">&#x1F389;</span>
+            <span className="text-base">🎉</span>
             <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
               Your 1st order discount
             </p>
           </div>
-          <p className="text-2xl font-bold text-white">Upto &#x20B9;120 off</p>
+          <p className="text-2xl font-bold text-white">Upto ₹120 off</p>
           <p className="text-[10px] text-gray-400 mt-1">
             on 1st order · valid 3 days · bucket 120
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-          >
-            <RefreshCw className="mr-1 h-3 w-3" />
-            Refresh offer
-          </Button>
         </div>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-card rounded-xl p-4 border border-border">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base">&#x1F4B0;</span>
+              <span className="text-base">💰</span>
               <p className="text-xs text-muted-foreground">Wallet balance</p>
             </div>
-            <p className="text-xl font-bold text-foreground">
-              &#x20B9;{wallet?.balance ?? 0}
-            </p>
+            <p className="text-xl font-bold text-foreground">₹0</p>
           </div>
           <div className="bg-card rounded-xl p-4 border border-border">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base">&#x1F517;</span>
+              <span className="text-base">🔗</span>
               <p className="text-xs text-muted-foreground">Linked accounts</p>
             </div>
-            <p className="text-xl font-bold text-foreground">
-              {linkedAccounts?.length ?? 0}
-            </p>
+            <p className="text-xl font-bold text-foreground">0</p>
           </div>
         </div>
 
@@ -286,7 +242,7 @@ export default function AccountPage() {
 
           <button
             onClick={handleExport}
-            disabled={isExporting || (canExport && !canExport.canExport)}
+            disabled={isExporting}
             className="w-full flex items-center gap-3 p-4 bg-card rounded-xl border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
           >
             <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
@@ -297,19 +253,12 @@ export default function AccountPage() {
               <p className="text-xs text-muted-foreground">
                 {isExporting
                   ? "Exporting..."
-                  : canExport && !canExport.canExport
-                    ? canExport.reason
-                    : "Download session data as JSON"}
+                  : "Download session data as JSON"}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </button>
         </div>
-
-        {/* Footer Note */}
-        <p className="text-xs text-muted-foreground text-center py-2">
-          To add or remove accounts, use the bot chat.
-        </p>
 
         {/* Sign Out */}
         <Button

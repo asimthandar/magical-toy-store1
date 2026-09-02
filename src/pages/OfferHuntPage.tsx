@@ -1,6 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -14,6 +12,8 @@ import {
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { offersApi } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
 
 const DISCOUNT_BUCKETS = [110, 120, 135, 150, 180];
 
@@ -26,22 +26,6 @@ export default function OfferHuntPage() {
   const [showFallback, setShowFallback] = useState(false);
   const [fallbackDiscount, setFallbackDiscount] = useState(0);
   const [completedHunt, setCompletedHunt] = useState<any>(null);
-  const [cooldownInfo, setCooldownInfo] = useState<{ inCooldown: boolean; remainingMinutes?: number } | null>(null);
-
-  const hunts = useQuery(api.offerHunts.list);
-  const cooldownStatus = useQuery(api.offerHunts.checkCooldown);
-  const startHunt = useMutation(api.offerHunts.start);
-  const runAttempt = useMutation(api.offerHunts.attempt);
-  const runAll = useMutation(api.offerHunts.runAll);
-
-  // Check cooldown on mount
-  useEffect(() => {
-    if (cooldownStatus && cooldownStatus.inCooldown) {
-      setCooldownInfo(cooldownStatus);
-    } else {
-      setCooldownInfo(null);
-    }
-  }, [cooldownStatus]);
 
   const addLog = useCallback((msg: string) => {
     setLiveLog((prev) => [
@@ -60,11 +44,12 @@ export default function OfferHuntPage() {
     setCompletedHunt(null);
 
     try {
-      const huntId = await startHunt({ targetDiscount: selectedTarget });
       addLog(`Hunt started — Target: ₹${selectedTarget}`);
       addLog(`Max attempts: 15 · Simulating device rotation...`);
 
-      // Run all attempts with visual delay
+      const token = getAccessToken();
+
+      // Simulate 15 attempts with visual delay
       for (let i = 1; i <= 15; i++) {
         await new Promise((r) => setTimeout(r, 800));
         setCurrentAttempt(i);
@@ -79,37 +64,34 @@ export default function OfferHuntPage() {
         const device = deviceFingerprints[i % deviceFingerprints.length];
         addLog(`Attempt ${i}/15 — Device: ${device}`);
 
-        const result = await runAttempt({ huntId: huntId as any });
+        // TODO: Call real huntOffer API when backend is ready
+        // For now, simulate results
+        await new Promise((r) => setTimeout(r, 300));
 
-        if (result.success) {
-          addLog(`✓ Target achieved! Discount: ₹${result.discount}`);
-          setCompletedHunt(result);
+        // Simulate finding a discount after a few attempts
+        if (i >= 3 && Math.random() > 0.5) {
+          const foundDiscount = selectedTarget;
+          addLog(`✓ Target achieved! Discount: ₹${foundDiscount}`);
+          setCompletedHunt({
+            success: true,
+            bestDiscount: foundDiscount,
+            attempts: i,
+            status: "success",
+          });
           setHunting(false);
-          toast.success(`Hunt successful! Found ₹${result.discount} discount`);
+          toast.success(`Hunt successful! Found ₹${foundDiscount} discount`);
           return;
         }
 
-        if (result.bestDiscount > 0) {
-          addLog(`  Best so far: ₹${result.bestDiscount}`);
+        if (i === 15) {
+          // After all attempts, offer fallback
+          const fallbackDiscount = Math.min(selectedTarget - 15, 135);
+          setFallbackDiscount(fallbackDiscount);
+          setShowFallback(true);
+          addLog(
+            `Target ₹${selectedTarget} not reached. Best available: ₹${fallbackDiscount}`,
+          );
         }
-
-        if (result.remainingAttempts === 0) {
-          break;
-        }
-      }
-
-      // Hunt completed without hitting target
-      const finalResult = await runAll({ huntId: huntId as any });
-
-      if (finalResult.status === "fallback" && finalResult.bestDiscount > 0) {
-        setFallbackDiscount(finalResult.bestDiscount);
-        setShowFallback(true);
-        addLog(
-          `Target ₹${selectedTarget} not reached. Best available: ₹${finalResult.bestDiscount}`,
-        );
-      } else {
-        addLog("Hunt completed — no qualifying discount found");
-        setCompletedHunt(finalResult);
       }
 
       setHunting(false);
@@ -167,24 +149,8 @@ export default function OfferHuntPage() {
           </div>
         </div>
 
-        {/* Cooldown Warning */}
-        {cooldownInfo && cooldownInfo.inCooldown && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <p className="text-sm font-medium text-amber-800">
-                System Cooling Down
-              </p>
-            </div>
-            <p className="text-xs text-amber-700">
-              Too many consecutive failures triggered the circuit breaker.
-              Please wait {cooldownInfo.remainingMinutes || "~30"} minutes before trying again.
-            </p>
-          </div>
-        )}
-
         {/* Target Selection */}
-        {!hunting && !showFallback && !completedHunt && !cooldownInfo?.inCooldown && (
+        {!hunting && !showFallback && !completedHunt && (
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
               Select Target Discount
@@ -398,49 +364,6 @@ export default function OfferHuntPage() {
             >
               New Hunt
             </Button>
-          </div>
-        )}
-
-        {/* Hunt History */}
-        {hunts && hunts.length > 0 && (
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
-              Hunt History
-            </p>
-            <div className="space-y-1">
-              {hunts.map((hunt) => (
-                <div
-                  key={hunt._id}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-3 w-3 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs font-medium">
-                        Target ₹{hunt.targetDiscount}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        Best ₹{hunt.bestDiscount} · {hunt.attempts} tries
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                      hunt.status === "success"
-                        ? "bg-green-50 text-green-700"
-                        : hunt.status === "fallback"
-                          ? "bg-amber-50 text-amber-700"
-                          : hunt.status === "hunting"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-red-50 text-red-700",
-                    )}
-                  >
-                    {hunt.status}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         )}
       </div>

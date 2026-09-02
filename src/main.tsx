@@ -1,8 +1,6 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation, Navigate } from "react-router";
@@ -90,9 +88,6 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -123,38 +118,36 @@ createRoot(document.getElementById("root")!).render(
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
-              />
-              <Route
-                path="/dashboard"
-                element={<Dashboard />}
-              >
-                <Route path="home" element={<DashboardHome />} />
-                <Route path="search" element={<SearchPage />} />
-                <Route path="product/:productId" element={<ProductPage />} />
-                <Route path="cart" element={<CartPage />} />
-                <Route path="checkout" element={<CheckoutPage />} />
-                <Route path="orders" element={<OrdersPage />} />
-                <Route path="addresses" element={<AddressesPage />} />
-                <Route path="refer" element={<ReferPage />} />
-                <Route path="account" element={<AccountPage />} />
-                <Route path="offer-hunt" element={<OfferHuntPage />} />
-                <Route path="add-account" element={<AddAccountPage />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
-      </ConvexAuthProvider>
+      <BrowserRouter>
+        <RouteSyncer />
+        <Suspense fallback={<RouteLoading />}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/auth"
+              element={<AuthPage redirectAfterAuth="/dashboard" />}
+            />
+            <Route
+              path="/dashboard"
+              element={<Dashboard />}
+            >
+              <Route path="home" element={<DashboardHome />} />
+              <Route path="search" element={<SearchPage />} />
+              <Route path="product/:productId" element={<ProductPage />} />
+              <Route path="cart" element={<CartPage />} />
+              <Route path="checkout" element={<CheckoutPage />} />
+              <Route path="orders" element={<OrdersPage />} />
+              <Route path="addresses" element={<AddressesPage />} />
+              <Route path="refer" element={<ReferPage />} />
+              <Route path="account" element={<AccountPage />} />
+              <Route path="offer-hunt" element={<OfferHuntPage />} />
+              <Route path="add-account" element={<AddAccountPage />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+      <Toaster />
     </RootErrorBoundary>
   </StrictMode>,
 );

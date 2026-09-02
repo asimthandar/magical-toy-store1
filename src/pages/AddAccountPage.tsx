@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
@@ -15,6 +13,8 @@ import {
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { authApi } from "@/lib/api";
+import { saveAuth, getAuth } from "@/lib/auth";
 
 const BONUS_TIERS = [
   { amount: 110, label: "₹110", description: "Starter" },
@@ -31,11 +31,9 @@ export default function AddAccountPage() {
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState("");
+  const [instanceId, setInstanceId] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const initiateLink = useMutation(api.linkedAccounts.initiateLink);
-  const verifyOtp = useMutation(api.linkedAccounts.verifyOtp);
 
   const handleReferral = () => {
     setStep("tier");
@@ -60,13 +58,9 @@ export default function AddAccountPage() {
 
     setLoading(true);
     try {
-      const result = await initiateLink({
-        phone,
-        platform: "ecommerce",
-        referralCode: referralCode || undefined,
-        welcomeBonus: selectedTier,
-      });
-      setAccountId(result.accountId);
+      const result = await authApi.sendOtp(phone) as any;
+      setRequestId(result.request_id || "");
+      setInstanceId(result.instance_id || "");
       setStep("otp");
       toast.success("OTP sent!");
     } catch (err) {
@@ -76,11 +70,35 @@ export default function AddAccountPage() {
   };
 
   const handleVerifyOtp = async () => {
-    if (!accountId || otp.length !== 6) return;
+    if (otp.length < 4) return;
 
     setLoading(true);
     try {
-      await verifyOtp({ accountId: accountId as any, otp });
+      const result = await authApi.verifyOtp({
+        request_id: requestId,
+        instance_id: instanceId,
+        phone_number: phone,
+        otp,
+        login_type: "otp",
+      }) as any;
+
+      // Save auth tokens
+      saveAuth({
+        request_id: requestId,
+        instance_id: instanceId,
+        phone_number: phone,
+        access_token: result.access_token || result.token,
+        token: result.token,
+        refresh_token: result.refresh_token,
+        user_id: result.user_id,
+        identifier: result.identifier,
+        cart_session: result.cart_session,
+        session_state: result.session_state,
+        login_type: "otp",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 2 * 24 * 60 * 60 * 1000,
+      });
+
       setStep("done");
       toast.success("Account linked! Welcome bonus credited.");
     } catch (err) {
@@ -99,7 +117,7 @@ export default function AddAccountPage() {
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
-            {step === "referral" ? "Back" : "Back"}
+            Back
           </button>
           <h1 className="ml-4 text-base font-semibold">Add Account</h1>
         </div>
@@ -239,7 +257,7 @@ export default function AddAccountPage() {
             <div className="text-center py-4">
               <h2 className="text-lg font-semibold">Verify OTP</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Enter the 6-digit code sent to {phone}
+                Enter the code sent to {phone}
               </p>
             </div>
 
@@ -250,7 +268,7 @@ export default function AddAccountPage() {
                 maxLength={6}
                 disabled={loading}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && otp.length === 6 && !loading) {
+                  if (e.key === "Enter" && otp.length >= 4 && !loading) {
                     handleVerifyOtp();
                   }
                 }}
@@ -265,7 +283,7 @@ export default function AddAccountPage() {
 
             <Button
               onClick={handleVerifyOtp}
-              disabled={otp.length !== 6 || loading}
+              disabled={otp.length < 4 || loading}
               className="w-full h-11 bg-foreground text-white"
             >
               {loading ? (

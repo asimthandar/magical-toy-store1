@@ -1,294 +1,201 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
-import { useAuth } from "@/hooks/use-auth";
-import logo from "@/assets/logo.svg";
-import { ArrowRight, Loader2, Mail, User } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Mail, ArrowRight, Loader2 } from "lucide-react";
+import { authApi } from "@/lib/api";
+import { saveAuth, isAuthenticated } from "@/lib/auth";
 
-interface AuthProps {
+interface AuthPageProps {
   redirectAfterAuth?: string;
 }
 
-function resolveRedirectAfterAuth(
-  returnTo: string | null,
-  fallback = "/dashboard",
-) {
-  if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
-    return returnTo;
-  }
-  return fallback;
-}
-
-function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const {
-    isLoading: authLoading,
-    isAuthenticated,
-    signIn,
-  } = useAuth();
+export default function AuthPage({ redirectAfterAuth = "/dashboard" }: AuthPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = resolveRedirectAfterAuth(
-    searchParams.get("returnTo"),
-    redirectAfterAuth,
-  );
-  const [step, setStep] = useState<"signIn" | { email: string }>("signIn");
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState("");
+  const [instanceId, setInstanceId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
+  // Redirect if already logged in
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      navigate(redirect);
+    if (isAuthenticated()) {
+      const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
+      navigate(returnTo, { replace: true });
     }
-  }, [authLoading, isAuthenticated, navigate, redirect]);
+  }, [navigate, searchParams, redirectAfterAuth]);
 
-  const handleEmailSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      setStep({ email: formData.get("email") as string });
-      setIsLoading(false);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to send verification code.",
-      );
-      setIsLoading(false);
+  const handleSendOtp = async () => {
+    if (phone.length < 10) {
+      setError("Enter a valid 10-digit phone number");
+      return;
     }
-  };
-
-  const handleOtpSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
+    setLoading(true);
+    setError("");
     try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      navigate(redirect);
-    } catch {
-      setError("The verification code you entered is incorrect.");
-      setIsLoading(false);
-      setOtp("");
+      const res = await authApi.sendOtp(phone) as any;
+      setRequestId(res.request_id || "");
+      setInstanceId(res.instance_id || "");
+      setStep("otp");
+    } catch (err: any) {
+      setError(err?.message || "Failed to send OTP");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGuestLogin = async () => {
-    setIsLoading(true);
-    setError(null);
+  const handleVerifyOtp = async () => {
+    if (otp.length < 4) {
+      setError("Enter a valid OTP");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      await signIn("anonymous");
-      navigate(redirect);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to sign in as guest.",
-      );
-      setIsLoading(false);
+      const res = await authApi.verifyOtp({
+        request_id: requestId,
+        instance_id: instanceId,
+        phone_number: phone,
+        otp,
+        login_type: "otp",
+      }) as any;
+
+      // Save auth tokens
+      saveAuth({
+        request_id: requestId,
+        instance_id: instanceId,
+        phone_number: phone,
+        access_token: res.access_token || res.token,
+        token: res.token,
+        refresh_token: res.refresh_token,
+        user_id: res.user_id,
+        identifier: res.identifier,
+        cart_session: res.cart_session,
+        session_state: res.session_state,
+        login_type: "otp",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 2 * 24 * 60 * 60 * 1000,
+      });
+
+      const returnTo = searchParams.get("returnTo") || redirectAfterAuth;
+      navigate(returnTo, { replace: true });
+    } catch (err: any) {
+      setError(err?.message || "Invalid OTP");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-6 relative overflow-hidden">
       {/* Ambient glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-blue-500/5 blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Logo */}
-      <div className="mb-8 animate-fade-in">
-        <div className="w-14 h-14 rounded-2xl bg-foreground flex items-center justify-center shadow-lg shadow-foreground/10">
-          <img
-            src={logo}
-            alt="Logo"
-            width={36}
-            height={36}
-            className="brightness-0"
-          />
-        </div>
-      </div>
-
-      {/* Card */}
-      <div className="w-full max-w-sm animate-fade-in" style={{ animationDelay: "100ms" }}>
-        {step === "signIn" ? (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold tracking-tight">
-                Get Started
-              </h1>
-              <p className="text-sm text-muted-foreground mt-2">
-                Enter your email to log in or sign up
-              </p>
-            </div>
-
-            <form onSubmit={handleEmailSubmit} className="space-y-3">
-              <div className="relative group">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-foreground transition-colors" />
-                <Input
-                  name="email"
-                  placeholder="name@example.com"
-                  type="email"
-                  className="pl-11 pr-12 h-12 bg-card border-border/50 focus:border-foreground/30 focus:ring-1 focus:ring-foreground/10 transition-all"
-                  disabled={isLoading}
-                  required
-                />
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 rounded-lg"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-
-              {error && (
-                <p className="text-sm text-red-400 text-center animate-fade-in">
-                  {error}
-                </p>
-              )}
-            </form>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border/50" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-background px-4 text-[11px] text-muted-foreground uppercase tracking-widest">
-                  or
-                </span>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-12 border-border/50 bg-card hover:bg-muted/50 hover:border-border transition-all"
-              onClick={handleGuestLogin}
-              disabled={isLoading}
-            >
-              <User className="mr-2 h-4 w-4" />
-              Continue as Guest
-            </Button>
+      <div className="w-full max-w-sm relative z-10">
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-white/10">
+            <span className="text-2xl">🛍️</span>
           </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold tracking-tight">
-                Check your email
-              </h1>
-              <p className="text-sm text-muted-foreground mt-2">
-                We&apos;ve sent a code to{" "}
-                <span className="text-foreground font-medium">
-                  {step.email}
-                </span>
-              </p>
-            </div>
+        </div>
 
-            <form onSubmit={handleOtpSubmit} className="space-y-5">
-              <input type="hidden" name="email" value={step.email} />
-              <input type="hidden" name="code" value={otp} />
+        {/* Title */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-white mb-2">
+            {step === "phone" ? "Welcome back" : "Verify OTP"}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {step === "phone"
+              ? "Enter your phone number to continue"
+              : `OTP sent to ${phone}`}
+          </p>
+        </div>
 
-              <div className="flex justify-center">
-                <InputOTP
-                  value={otp}
-                  onChange={setOtp}
-                  maxLength={6}
-                  disabled={isLoading}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      otp.length === 6 &&
-                      !isLoading
-                    ) {
-                      const form = (
-                        e.target as HTMLElement
-                      ).closest("form");
-                      if (form) form.requestSubmit();
-                    }
-                  }}
-                >
-                  <InputOTPGroup>
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <InputOTPSlot key={index} index={index} />
-                    ))}
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-
-              {error && (
-                <p className="text-sm text-red-400 text-center animate-fade-in">
-                  {error}
-                </p>
-              )}
-
-              <Button
-                type="submit"
-                className="w-full h-12 bg-foreground text-background hover:bg-foreground/90 font-medium transition-all"
-                disabled={isLoading || otp.length !== 6}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  <>
-                    Verify code
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-
-              <p className="text-sm text-muted-foreground text-center">
-                Didn&apos;t receive a code?{" "}
-                <button
-                  type="button"
-                  className="text-foreground font-medium hover:underline underline-offset-4"
-                  onClick={() => setStep("signIn")}
-                >
-                  Try again
-                </button>
-              </p>
-            </form>
+        {/* Error */}
+        {error && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
+            {error}
           </div>
         )}
 
-        <div className="mt-10 py-3 text-[11px] text-center text-muted-foreground/60">
-          Secured by{" "}
-          <a
-            href="https://freebuff.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            freebuff.com
-          </a>
-        </div>
+        {/* Phone Input */}
+        {step === "phone" && (
+          <div className="space-y-3">
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Input
+                type="tel"
+                placeholder="Phone number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
+                className="pl-11 h-13 bg-[#141414] border-white/10 text-white placeholder:text-gray-600 rounded-xl text-base focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+              />
+            </div>
+            <Button
+              onClick={handleSendOtp}
+              disabled={loading || phone.length < 10}
+              className="w-full h-13 bg-white text-black hover:bg-gray-100 rounded-xl font-semibold text-base transition-all disabled:opacity-30"
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  Continue
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {/* OTP Input */}
+        {step === "otp" && (
+          <div className="space-y-3">
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="Enter OTP"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+              className="h-13 bg-[#141414] border-white/10 text-white placeholder:text-gray-600 rounded-xl text-center text-xl tracking-[0.5em] font-mono focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+            />
+            <Button
+              onClick={handleVerifyOtp}
+              disabled={loading || otp.length < 4}
+              className="w-full h-13 bg-white text-black hover:bg-gray-100 rounded-xl font-semibold text-base transition-all disabled:opacity-30"
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                "Verify & Login"
+              )}
+            </Button>
+            <button
+              onClick={() => {
+                setStep("phone");
+                setOtp("");
+                setError("");
+              }}
+              className="w-full text-center text-sm text-gray-500 hover:text-gray-300 transition-colors py-2"
+            >
+              Change phone number
+            </button>
+          </div>
+        )}
+
+        {/* Footer */}
+        <p className="text-center text-[11px] text-gray-600 mt-8 leading-relaxed">
+          By continuing, you agree to our Terms of Service
+          <br />
+          and Privacy Policy
+        </p>
       </div>
     </div>
-  );
-}
-
-export default function AuthPage(props: AuthProps) {
-  return (
-    <Suspense>
-      <Auth {...props} />
-    </Suspense>
   );
 }

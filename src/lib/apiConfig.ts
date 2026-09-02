@@ -12,10 +12,9 @@
 // ──────────────────────────────────────────────
 // Base URL
 // ──────────────────────────────────────────────
-export const API_BASE_URL =
-  process.env.ECOMMERCE_API_BASE_URL || "https://api.localproject.dev";
+export const API_BASE_URL = "https://api.localproject.dev";
 
-export const API_KEY = process.env.ECOMMERCE_API_KEY || "";
+export const API_KEY = "";
 
 // ──────────────────────────────────────────────
 // Timeout & retry settings
@@ -81,6 +80,12 @@ export const ENDPOINTS = {
     preorder: "/mcheckout/api/4.0/preorders",
     placeOrder: "/mcheckout/api/3.0/order",
     orderAnimation: "/mcheckout/api/order-animation",
+  },
+
+  // ── Offers ─────────────────────────────────
+  offers: {
+    hunt: "/api/v1/offers/hunt",
+    welcomeTiers: "/api/v1/offers/welcome-tiers",
   },
 } as const;
 

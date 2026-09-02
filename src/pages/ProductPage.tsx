@@ -1,22 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ShoppingCart, Star } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Star, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { productsApi, cartApi } from "@/lib/api";
+import { getIdentifier } from "@/lib/auth";
+import type { Product } from "@/lib/apiConfig";
 
 export default function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
 
-  const product = useQuery(
-    api.products.get,
-    productId ? { productId: productId as any } : "skip",
-  );
-  const addItem = useMutation(api.cart.addItem);
+  useEffect(() => {
+    if (!productId) return;
+    setLoading(true);
+    productsApi.getDetail(productId)
+      .then((data: any) => {
+        setProduct(data);
+      })
+      .catch((err: any) => {
+        console.error("Failed to load product:", err);
+        setProduct(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [productId]);
 
   const handleAddToCart = async () => {
     if (!product) return;
@@ -24,20 +38,31 @@ export default function ProductPage() {
       toast.error("Please select a size");
       return;
     }
+    setAdding(true);
     try {
-      await addItem({
-        productId: product._id,
-        size: selectedSize || undefined,
-        quantity: 1,
+      const identifier = getIdentifier();
+      await cartApi.addItem({
+        identifier,
+        items: [
+          {
+            product_id: String(product.id),
+            supplier_id: product.supplier_id || 0,
+            variation: product.variation,
+            variation_id: product.variation_id,
+            quantity: 1,
+          },
+        ],
       });
       toast.success("Added to cart!");
       navigate("/dashboard/cart");
     } catch {
       toast.error("Failed to add to cart");
+    } finally {
+      setAdding(false);
     }
   };
 
-  if (product === undefined) {
+  if (loading) {
     return (
       <div className="pb-24">
         <div className="animate-pulse">
@@ -68,10 +93,10 @@ export default function ProductPage() {
   }
 
   const hasDiscount =
-    product.originalPrice && product.originalPrice > product.price;
+    product.original_price && product.original_price > product.price;
   const discountPct = hasDiscount
     ? Math.round(
-        ((product.originalPrice! - product.price) / product.originalPrice!) *
+        ((product.original_price! - product.price) / product.original_price!) *
           100,
       )
     : 0;
@@ -94,7 +119,7 @@ export default function ProductPage() {
       {/* Product Image */}
       <div className="aspect-square overflow-hidden bg-muted">
         <img
-          src={product.image}
+          src={product.image || product.thumbnail}
           alt={product.name}
           className="h-full w-full object-cover"
         />
@@ -109,12 +134,12 @@ export default function ProductPage() {
             </h1>
             <div className="mt-1 flex items-center gap-2 flex-wrap">
               <span className="text-lg font-bold text-foreground">
-                &#x20B9;{product.price}
+                ₹{product.price}
               </span>
               {hasDiscount && (
                 <>
                   <span className="text-sm text-muted-foreground line-through">
-                    &#x20B9;{product.originalPrice}
+                    ₹{product.original_price}
                   </span>
                   <span className="rounded-full bg-green-500/10 text-green-500 px-2 py-0.5 text-[10px] font-medium">
                     {discountPct}% off
@@ -128,19 +153,21 @@ export default function ProductPage() {
               <Star className="h-3 w-3 fill-current text-amber-500" />
               <span className="text-xs font-medium">{product.rating}</span>
               <span className="text-[10px] text-muted-foreground">
-                ({product.reviewCount})
+                ({product.review_count})
               </span>
             </div>
           )}
         </div>
 
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {product.description}
+          {String(product.description || '')}
         </p>
 
-        <div className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
-          {product.category}
-        </div>
+        {product.category && (
+          <div className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+            {String(product.category)}
+          </div>
+        )}
 
         {/* Size Selection */}
         {product.sizes && product.sizes.length > 0 && (
@@ -168,30 +195,37 @@ export default function ProductPage() {
         )}
       </div>
 
-      {/* Add to Cart Bar — sticky above BottomNav (z-50) */}
+      {/* Add to Cart Bar */}
       <div className="sticky bottom-0 z-[60] bg-background border-t border-border px-4 py-3 flex items-center gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold">&#x20B9;{product.price}</span>
+            <span className="text-lg font-bold">₹{product.price}</span>
             {hasDiscount && (
               <span className="text-xs text-muted-foreground line-through">
-                &#x20B9;{product.originalPrice}
+                ₹{product.original_price}
               </span>
             )}
           </div>
           {hasDiscount && (
             <p className="text-[10px] text-green-500 font-medium">
-              You save &#x20B9;{product.originalPrice! - product.price} (
+              You save ₹{product.original_price! - product.price} (
               {discountPct}% off)
             </p>
           )}
         </div>
         <Button
           onClick={handleAddToCart}
+          disabled={adding}
           className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 font-medium shrink-0"
         >
-          <ShoppingCart className="mr-2 h-4 w-4" />
-          Add to Cart
+          {adding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <ShoppingCart className="mr-2 h-4 w-4" />
+              Add to Cart
+            </>
+          )}
         </Button>
       </div>
     </div>

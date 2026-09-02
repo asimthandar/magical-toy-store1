@@ -1,7 +1,4 @@
-import { useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useAuth } from "@/hooks/use-auth";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   ShoppingBag,
@@ -9,24 +6,17 @@ import {
   Smartphone,
   Gift,
   TrendingUp,
+  Loader2,
 } from "lucide-react";
+import { isAuthenticated, getAuth } from "@/lib/auth";
 
 export default function DashboardHome() {
-  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const ensureWallet = useMutation(api.wallet.ensure);
-  const wallet = useQuery(api.wallet.get);
-  const linkedAccounts = useQuery(api.linkedAccounts.list);
-  const offerHunts = useQuery(api.offerHunts.list);
+  const [auth, setAuth] = useState(getAuth());
 
   useEffect(() => {
-    if (isAuthenticated) ensureWallet();
-  }, [ensureWallet, isAuthenticated]);
-
-  const activeAccount = linkedAccounts?.find(
-    (a) => a.status === "verified",
-  );
-  const recentHunt = offerHunts?.[0];
+    setAuth(getAuth());
+  }, []);
 
   const quickActions = [
     {
@@ -93,9 +83,9 @@ export default function DashboardHome() {
             </div>
             <div>
               <p className="text-sm font-medium">
-                {activeAccount?.phone
-                  ? `+91 ${activeAccount.phone}`
-                  : user?.email || "Guest"}
+                {auth?.phone_number
+                  ? `+91 ${auth.phone_number}`
+                  : "Guest"}
               </p>
             </div>
           </div>
@@ -104,8 +94,8 @@ export default function DashboardHome() {
               onClick={() => navigate("/dashboard/account")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 text-sm font-medium hover:bg-emerald-500/15 transition-colors"
             >
-              <span className="text-xs">&#x1F4B0;</span>
-              &#x20B9;{wallet?.balance ?? 0}
+              <span className="text-xs">💰</span>
+              ₹0
             </button>
           </div>
         </div>
@@ -118,9 +108,7 @@ export default function DashboardHome() {
             <p className="text-xs text-blue-400/80 font-medium uppercase tracking-wider mb-1">
               Welcome back
             </p>
-            <h2 className="text-lg font-bold">
-              {user?.name || "Explorer"}
-            </h2>
+            <h2 className="text-lg font-bold">Explorer</h2>
             <p className="text-sm text-muted-foreground mt-1">
               Find the best deals and discounts
             </p>
@@ -153,85 +141,6 @@ export default function DashboardHome() {
           })}
         </div>
 
-        {/* Active Account Status */}
-        {linkedAccounts && linkedAccounts.length > 0 && (
-          <div className="animate-fade-in bg-card rounded-2xl p-4 border border-border/50">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Linked Accounts
-            </p>
-            <div className="space-y-2">
-              {linkedAccounts.slice(0, 3).map((acc) => (
-                <div
-                  key={acc._id}
-                  className="flex items-center justify-between p-3 bg-muted/30 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        acc.status === "verified"
-                          ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
-                          : acc.status === "pending"
-                            ? "bg-amber-400"
-                            : "bg-red-400"
-                      }`}
-                    />
-                    <div>
-                      <p className="text-sm font-medium capitalize">
-                        {acc.platform}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        &#x2022;&#x2022;&#x2022;{acc.phone.slice(-4)}
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-[11px] font-medium capitalize px-2 py-0.5 rounded-full ${
-                      acc.status === "verified"
-                        ? "bg-emerald-500/10 text-emerald-400"
-                        : acc.status === "pending"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-red-500/10 text-red-400"
-                    }`}
-                  >
-                    {acc.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent Hunt */}
-        {recentHunt && (
-          <button
-            onClick={() => navigate("/dashboard/offer-hunt")}
-            className="w-full animate-fade-in bg-card rounded-2xl p-4 border border-border/50 text-left hover:border-border transition-all group"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                  Latest Offer Hunt
-                </p>
-                <p className="text-sm font-medium">
-                  Target: &#x20B9;{recentHunt.targetDiscount} &#x00B7; Best:
-                  &#x20B9;{recentHunt.bestDiscount}
-                </p>
-              </div>
-              <span
-                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                  recentHunt.status === "success"
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : recentHunt.status === "fallback"
-                      ? "bg-amber-500/10 text-amber-400"
-                      : "bg-blue-500/10 text-blue-400"
-                }`}
-              >
-                {recentHunt.status}
-              </span>
-            </div>
-          </button>
-        )}
-
         {/* Stats row */}
         <div className="grid grid-cols-2 gap-3 stagger-children">
           <div className="bg-card rounded-2xl p-4 border border-border/50">
@@ -243,9 +152,7 @@ export default function DashboardHome() {
                 Wallet Balance
               </p>
             </div>
-            <p className="text-xl font-bold">
-              &#x20B9;{wallet?.balance ?? 0}
-            </p>
+            <p className="text-xl font-bold">₹0</p>
           </div>
           <div className="bg-card rounded-2xl p-4 border border-border/50">
             <div className="flex items-center gap-2 mb-2">
@@ -254,9 +161,7 @@ export default function DashboardHome() {
               </div>
               <p className="text-[11px] text-muted-foreground">Accounts</p>
             </div>
-            <p className="text-xl font-bold">
-              {linkedAccounts?.length ?? 0}
-            </p>
+            <p className="text-xl font-bold">0</p>
           </div>
         </div>
       </div>
